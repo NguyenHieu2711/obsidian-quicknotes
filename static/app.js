@@ -40,7 +40,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.2",
+    appVersion: "1.0.3",
 
     quickItems: [],
     noteStreams: [],
@@ -386,9 +386,8 @@
   function renderHeaderAndNav() {
     if (!state.vaultConnected) {
       els.vaultBanner.classList.remove("hidden");
-      els.vaultBannerText.textContent = state.hasAllFilesAccess
-        ? "Chọn thư mục Vault Syncthing để đồng bộ 2 chiều"
-        : "Bật quyền tệp để tự nhận diện Vault Syncthing";
+      els.vaultBannerText.textContent = "Chọn thư mục Vault để đồng bộ 2 chiều qua Syncthing";
+      els.btnConnectVault.textContent = "Chọn thư mục";
     } else {
       els.vaultBanner.classList.add("hidden");
     }
@@ -872,10 +871,7 @@
       '<div class="sheet-group-label">Giao diện hiển thị</div>' +
       '<button id="btnSwitchThemeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + (state.theme === "light" ? ICONS.moon : ICONS.sun) + "<span>" + nextThemeLabel + "</span></span>" + ICONS.arrowRight + "</button>" +
       '<div class="sheet-group-label">Thư mục Obsidian Vault (Syncthing)</div>' +
-      '<button id="btnPickVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.folder + "<span>" + escHtml(statusText) + '</span></span><span style="color:var(--accent);font-weight:600;">Chọn</span></button>' +
-      (!state.hasAllFilesAccess
-        ? '<button id="btnGrantAllFilesSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.folder + '<span>Cấp quyền đọc/ghi trực tiếp tốc độ cao</span></span><span style="color:var(--accent);font-weight:600;">Bật</span></button>'
-        : "") +
+      '<button id="btnPickVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.folder + "<span>" + escHtml(statusText) + '</span></span><span style="color:var(--accent);font-weight:600;">Chọn thư mục</span></button>' +
       '<div class="sheet-group-label">Cập nhật tự động từ GitHub (OTA)</div>' +
       '<button id="btnCheckOtaSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Kiểm tra bản cập nhật mới</span></span>' + ICONS.arrowRight + "</button>" +
       '<button id="btnReloadVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Đọc lại dữ liệu từ Syncthing</span></span>' + ICONS.arrowRight + "</button>"
@@ -1205,8 +1201,7 @@
 
   els.btnConnectVault.addEventListener("click", () => {
     if (!hasNative) return;
-    if (!state.hasAllFilesAccess) window.AndroidBridge.requestAllFilesAccess();
-    else window.AndroidBridge.pickVaultFolder();
+    window.AndroidBridge.pickVaultFolder();
   });
 
   els.btnTaskTargetToggle.addEventListener("click", () => {
