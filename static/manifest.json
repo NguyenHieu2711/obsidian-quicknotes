@@ -1,0 +1,8 @@
+{
+  "name": "Obsidian Quick",
+  "short_name": "Obsidian Quick",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#090C12",
+  "theme_color": "#090C12"
+}

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Top Header -->
+    <header id="topHeader" class="top-header">
+      <div class="hdr-left">
+        <h1 id="hdrTitle" class="hdr-title">Ghi nhanh</h1>
+        <span id="hdrBadge" class="hdr-count hidden">0</span>
+      </div>
+      <div class="hdr-actions">
+        <div id="notesHeaderControls" class="hdr-inline-group hidden">
+          <button id="btnTreeLayout" class="chip-toggle" type="button">⬒ Ghim</button>
+          <div id="btnDisplayMode" class="seg-mini">
+            <span data-mode="chat" class="seg-opt active">💬</span>
+            <span data-mode="block" class="seg-opt">▤</span>
+          </div>
+        </div>
+        <button id="btnAddTop" class="icon-btn hidden" type="button">＋</button>
+        <button id="btnSearchToggle" class="icon-btn" type="button">🔍</button>
+        <button id="btnSettings" class="icon-btn" type="button">⚙</button>
+      </div>
+    </header>
+
+    <!-- Collapsible Search Bar (hidden until 🔍 tapped) -->
+    <div id="searchBarWrap" class="search-wrap hidden">
+      <input id="searchInput" type="text" placeholder="Tìm nhanh trong trang này..." autocomplete="off" />
+      <button id="btnSearchClear" class="search-clear" type="button">✕</button>
+    </div>
+
+    <!-- Syncthing Vault Link Banner (shown only until Vault folder is connected) -->
+    <div id="vaultBanner" class="vault-banner hidden">
+      <div class="vb-info">
+        <span class="vb-dot"></span>
+        <span id="vaultBannerText">Liên kết thư mục Vault Syncthing để đồng bộ 2 chiều</span>
+      </div>
+      <button id="btnConnectVault" class="vb-btn" type="button">Kết nối</button>
+    </div>
+
+    <!-- Main 3-Tab Viewport -->
+    <main id="viewport" class="viewport">
+      <!-- TAB 1: NHÁP NHANH (0s Vertical List + ⋯ Vanish Triage) -->
+      <section id="viewQuick" class="tab-page active">
+        <div id="quickList" class="scroll-area quick-list"></div>
+      </section>
+
+      <!-- TAB 2: NOTES (Structured Grouped Tree + Dual Chat/Block + Long-Press Merge) -->
+      <section id="viewNotes" class="tab-page">
+        <!-- Mode A: Pinned Split-Top Tree (auto-collapses on scroll/keyboard) -->
+        <div id="notesSplitWrap" class="notes-split-wrap">
+          <div id="pinnedTreeBox" class="pinned-tree-box">
+            <div id="treeFullContent" class="tree-full-content"></div>
+            <button id="treeCollapsedBar" class="tree-collapsed-bar hidden" type="button">
+              <span id="treeCollapsedLabel" class="tcl-text">🎯 Đang giải quyết · Bảng cảm giác phấn đấu</span>
+              <span class="tcl-arrow">▾</span>
+            </button>
+          </div>
+          <div id="notesStreamHeader" class="stream-subhdr">
+            <span id="activeStreamName" class="stream-name">Bảng cảm giác phấn đấu</span>
+            <button id="btnCollapseTreeManual" class="mini-ghost-btn" type="button">Thu cây ▴</button>
+          </div>
+          <div id="notesStreamList" class="scroll-area stream-list"></div>
+        </div>
+
+        <!-- Mode B: Inline Craft Accordion Tree -->
+        <div id="notesAccordionWrap" class="scroll-area accordion-wrap hidden"></div>
+      </section>
+
+      <!-- TAB 3: TASK (Exact 1px Rounded Cards + Tree Branch ├─ / └─ + Chevron ⌃/⌄) -->
+      <section id="viewTask" class="tab-page">
+        <div id="taskScrollArea" class="scroll-area task-scroll">
+          <div id="focusTaskList" class="task-tree-list"></div>
+
+          <div class="warehouse-section">
+            <button id="btnToggleWarehouse" class="warehouse-hdr" type="button">
+              <span id="warehouseHdrLabel">📥 Kho chờ Task (0)</span>
+              <span id="warehouseChevron" class="wh-chev">⌄</span>
+            </button>
+            <div id="warehouseTaskList" class="warehouse-list hidden"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Tag Suggestion Strip (only visible when typing #) -->
+    <div id="tagSuggestBar" class="tag-suggest hidden"></div>
+
+    <!-- Bottom Composer Input Bar (Right at thumb level) -->
+    <div id="composerWrap" class="composer-wrap">
+      <button id="btnTaskTargetToggle" class="task-target-chip hidden" type="button">🔥 Hôm nay</button>
+      <div class="composer-box">
+        <textarea id="composerInput" rows="1" placeholder="Gõ nhanh ý mới..."></textarea>
+        <button id="btnVoice" class="voice-btn" type="button">🎤</button>
+        <button id="btnSend" class="send-btn" type="button">➤</button>
+      </div>
+    </div>
+
+    <!-- Standard Flat Docked 3-Tab Bottom Bar (Kiểu bình thường — KHÔNG viên thuốc nổi) -->
+    <nav id="bottomBar" class="bottom-bar">
+      <button class="nav-tab active" data-tab="quick" type="button">
+        <span class="nt-icon">⚡</span>
+        <span class="nt-label">Nháp</span>
+        <span id="badgeQuick" class="nt-badge hidden">0</span>
+      </button>
+      <button class="nav-tab" data-tab="notes" type="button">
+        <span class="nt-icon">📝</span>
+        <span class="nt-label">Notes</span>
+      </button>
+      <button class="nav-tab" data-tab="task" type="button">
+        <span class="nt-icon">☑</span>
+        <span class="nt-label">Task</span>
+        <span id="badgeTask" class="nt-badge hidden">0</span>
+      </button>
+    </nav>
+
+    <!-- Bottom Sheet Backdrop & Dynamic Modal Sheet -->
+    <div id="sheetBackdrop" class="sheet-backdrop hidden"></div>
+    <div id="bottomSheet" class="bottom-sheet hidden">
+      <div class="sheet-handle"></div>
+      <div id="sheetContent" class="sheet-content"></div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
