@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="stylesheet" href="./style.css" />
 </head>
-<body>
+<body class="theme-slate">
   <div id="app">
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Top Header -->
+    <!-- Top Header (100% Flat Monoline SVG Icons) -->
     <header id="topHeader" class="top-header">
       <div class="hdr-left">
         <h1 id="hdrTitle" class="hdr-title">Ghi nhanh</h1>
@@ -17,25 +17,37 @@
       </div>
       <div class="hdr-actions">
         <div id="notesHeaderControls" class="hdr-inline-group hidden">
-          <button id="btnTreeLayout" class="chip-toggle" type="button">⬒ Ghim</button>
           <div id="btnDisplayMode" class="seg-mini">
-            <span data-mode="chat" class="seg-opt active">💬</span>
-            <span data-mode="block" class="seg-opt">▤</span>
+            <span data-mode="chat" class="seg-opt active">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span data-mode="block" class="seg-opt">
+              <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
+            </span>
           </div>
         </div>
-        <button id="btnAddTop" class="icon-btn hidden" type="button">＋</button>
-        <button id="btnSearchToggle" class="icon-btn" type="button">🔍</button>
-        <button id="btnSettings" class="icon-btn" type="button">⚙</button>
+        <button id="btnThemeToggle" class="icon-btn" type="button">
+          <svg id="iconThemeSun" class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        </button>
+        <button id="btnSearchToggle" class="icon-btn" type="button">
+          <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </button>
+        <button id="btnSettings" class="icon-btn" type="button">
+          <svg class="ic" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg>
+        </button>
       </div>
     </header>
 
-    <!-- Collapsible Search Bar (hidden until 🔍 tapped) -->
+    <!-- Collapsible Search Bar -->
     <div id="searchBarWrap" class="search-wrap hidden">
+      <svg class="ic search-prefix" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="searchInput" type="text" placeholder="Tìm nhanh trong trang này..." autocomplete="off" />
-      <button id="btnSearchClear" class="search-clear" type="button">✕</button>
+      <button id="btnSearchClear" class="search-clear" type="button">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
     </div>
 
-    <!-- Syncthing Vault Link Banner (shown only until Vault folder is connected) -->
+    <!-- Syncthing Vault Link Banner -->
     <div id="vaultBanner" class="vault-banner hidden">
       <div class="vb-info">
         <span class="vb-dot"></span>
@@ -46,42 +58,79 @@
 
     <!-- Main 3-Tab Viewport -->
     <main id="viewport" class="viewport">
-      <!-- TAB 1: NHÁP NHANH (0s Vertical List + ⋯ Vanish Triage) -->
+      <!-- TAB 1: NHÁP NHANH -->
       <section id="viewQuick" class="tab-page active">
         <div id="quickList" class="scroll-area quick-list"></div>
       </section>
 
-      <!-- TAB 2: NOTES (Structured Grouped Tree + Dual Chat/Block + Long-Press Merge) -->
+      <!-- TAB 2: NOTES (Top 2-Column Split Border Box: Trái Đang giải quyết | Phải Kho lưu trữ) -->
       <section id="viewNotes" class="tab-page">
-        <!-- Mode A: Pinned Split-Top Tree (auto-collapses on scroll/keyboard) -->
         <div id="notesSplitWrap" class="notes-split-wrap">
-          <div id="pinnedTreeBox" class="pinned-tree-box">
-            <div id="treeFullContent" class="tree-full-content"></div>
+          <div id="pinnedTreeBox" class="pinned-2col-box">
+            <div id="twoColGrid" class="two-col-grid">
+              <!-- Left Column: Đang giải quyết -->
+              <div class="col-pane col-left">
+                <div class="col-hdr">
+                  <span class="col-hdr-label active-tone">
+                    <svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+                    <span>Đang giải quyết</span>
+                  </span>
+                  <button class="col-add-btn" data-add-stream="active" type="button">
+                    <svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+                <div id="leftColStreams" class="col-list"></div>
+              </div>
+
+              <!-- Right Column: Kho lưu trữ -->
+              <div class="col-pane col-right">
+                <div class="col-hdr">
+                  <span class="col-hdr-label">
+                    <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                    <span>Kho lưu trữ</span>
+                  </span>
+                  <button class="col-add-btn" data-add-stream="archive" type="button">
+                    <svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                </div>
+                <div id="rightColStreams" class="col-list"></div>
+              </div>
+            </div>
+
+            <!-- Slim 1-line bar when collapsed -->
             <button id="treeCollapsedBar" class="tree-collapsed-bar hidden" type="button">
-              <span id="treeCollapsedLabel" class="tcl-text">🎯 Đang giải quyết · Bảng cảm giác phấn đấu</span>
-              <span class="tcl-arrow">▾</span>
+              <span id="treeCollapsedLabel" class="tcl-text">Đang giải quyết · Bảng cảm giác phấn đấu</span>
+              <span class="tcl-right">
+                <span>2 ngăn</span>
+                <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
             </button>
           </div>
+
           <div id="notesStreamHeader" class="stream-subhdr">
             <span id="activeStreamName" class="stream-name">Bảng cảm giác phấn đấu</span>
-            <button id="btnCollapseTreeManual" class="mini-ghost-btn" type="button">Thu cây ▴</button>
+            <button id="btnCollapseTreeManual" class="mini-ghost-btn" type="button">
+              <span>Thu khung</span>
+              <svg class="ic-xs" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
           </div>
+
           <div id="notesStreamList" class="scroll-area stream-list"></div>
         </div>
-
-        <!-- Mode B: Inline Craft Accordion Tree -->
-        <div id="notesAccordionWrap" class="scroll-area accordion-wrap hidden"></div>
       </section>
 
-      <!-- TAB 3: TASK (Exact 1px Rounded Cards + Tree Branch ├─ / └─ + Chevron ⌃/⌄) -->
+      <!-- TAB 3: TASK -->
       <section id="viewTask" class="tab-page">
         <div id="taskScrollArea" class="scroll-area task-scroll">
           <div id="focusTaskList" class="task-tree-list"></div>
 
           <div class="warehouse-section">
             <button id="btnToggleWarehouse" class="warehouse-hdr" type="button">
-              <span id="warehouseHdrLabel">📥 Kho chờ Task (0)</span>
-              <span id="warehouseChevron" class="wh-chev">⌄</span>
+              <span class="wh-left">
+                <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                <span id="warehouseHdrLabel">Kho chờ Task (0)</span>
+              </span>
+              <svg id="warehouseChevron" class="ic-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="warehouseTaskList" class="warehouse-list hidden"></div>
           </div>
@@ -89,38 +138,42 @@
       </section>
     </main>
 
-    <!-- Tag Suggestion Strip (only visible when typing #) -->
+    <!-- Tag Suggestion Strip -->
     <div id="tagSuggestBar" class="tag-suggest hidden"></div>
 
-    <!-- Bottom Composer Input Bar (Right at thumb level) -->
+    <!-- Bottom Composer Input Bar -->
     <div id="composerWrap" class="composer-wrap">
-      <button id="btnTaskTargetToggle" class="task-target-chip hidden" type="button">🔥 Hôm nay</button>
+      <button id="btnTaskTargetToggle" class="task-target-chip hidden" type="button">Hôm nay</button>
       <div class="composer-box">
         <textarea id="composerInput" rows="1" placeholder="Gõ nhanh ý mới..."></textarea>
-        <button id="btnVoice" class="voice-btn" type="button">🎤</button>
-        <button id="btnSend" class="send-btn" type="button">➤</button>
+        <button id="btnVoice" class="voice-btn" type="button">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        </button>
+        <button id="btnSend" class="send-btn" type="button">
+          <svg class="ic-send" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
       </div>
     </div>
 
-    <!-- Standard Flat Docked 3-Tab Bottom Bar (Kiểu bình thường — KHÔNG viên thuốc nổi) -->
+    <!-- Standard Flat Docked 3-Tab Bottom Bar with Synchronized Flat SVG Icons -->
     <nav id="bottomBar" class="bottom-bar">
       <button class="nav-tab active" data-tab="quick" type="button">
-        <span class="nt-icon">⚡</span>
+        <svg class="ic-tab" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         <span class="nt-label">Nháp</span>
         <span id="badgeQuick" class="nt-badge hidden">0</span>
       </button>
       <button class="nav-tab" data-tab="notes" type="button">
-        <span class="nt-icon">📝</span>
+        <svg class="ic-tab" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
         <span class="nt-label">Notes</span>
       </button>
       <button class="nav-tab" data-tab="task" type="button">
-        <span class="nt-icon">☑</span>
+        <svg class="ic-tab" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m9 12 2 2 4-4"/></svg>
         <span class="nt-label">Task</span>
         <span id="badgeTask" class="nt-badge hidden">0</span>
       </button>
     </nav>
 
-    <!-- Bottom Sheet Backdrop & Dynamic Modal Sheet -->
+    <!-- Bottom Sheet -->
     <div id="sheetBackdrop" class="sheet-backdrop hidden"></div>
     <div id="bottomSheet" class="bottom-sheet hidden">
       <div class="sheet-handle"></div>
