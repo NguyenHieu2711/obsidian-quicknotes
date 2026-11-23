@@ -40,7 +40,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.3",
+    appVersion: "1.0.4",
 
     quickItems: [],
     noteStreams: [],
@@ -54,13 +54,16 @@
   };
 
   const els = {
+    topHeader: document.getElementById("topHeader"),
     hdrTitle: document.getElementById("hdrTitle"),
     hdrBadge: document.getElementById("hdrBadge"),
-    notesHeaderControls: document.getElementById("notesHeaderControls"),
     btnDisplayMode: document.getElementById("btnDisplayMode"),
     btnThemeToggle: document.getElementById("btnThemeToggle"),
     btnSearchToggle: document.getElementById("btnSearchToggle"),
     btnSettings: document.getElementById("btnSettings"),
+    btnNotesTheme: document.getElementById("btnNotesTheme"),
+    btnNotesSearch: document.getElementById("btnNotesSearch"),
+    btnNotesSettings: document.getElementById("btnNotesSettings"),
     searchBarWrap: document.getElementById("searchBarWrap"),
     searchInput: document.getElementById("searchInput"),
     btnSearchClear: document.getElementById("btnSearchClear"),
@@ -73,13 +76,13 @@
     viewTask: document.getElementById("viewTask"),
 
     quickList: document.getElementById("quickList"),
+    pinnedTreeBox: document.getElementById("pinnedTreeBox"),
     twoColGrid: document.getElementById("twoColGrid"),
     leftColStreams: document.getElementById("leftColStreams"),
     rightColStreams: document.getElementById("rightColStreams"),
-    treeCollapsedBar: document.getElementById("treeCollapsedBar"),
-    treeCollapsedLabel: document.getElementById("treeCollapsedLabel"),
+    drawerHandleZone: document.getElementById("drawerHandleZone"),
+    notesStreamHeader: document.getElementById("notesStreamHeader"),
     activeStreamName: document.getElementById("activeStreamName"),
-    btnCollapseTreeManual: document.getElementById("btnCollapseTreeManual"),
     notesStreamList: document.getElementById("notesStreamList"),
 
     focusTaskList: document.getElementById("focusTaskList"),
@@ -143,7 +146,9 @@
   function applyTheme() {
     document.body.classList.toggle("theme-light", state.theme === "light");
     document.body.classList.toggle("theme-slate", state.theme !== "light");
-    els.btnThemeToggle.innerHTML = state.theme === "light" ? ICONS.moon : ICONS.sun;
+    const iconHtml = state.theme === "light" ? ICONS.moon : ICONS.sun;
+    els.btnThemeToggle.innerHTML = iconHtml;
+    if (els.btnNotesTheme) els.btnNotesTheme.innerHTML = iconHtml;
   }
 
   // =========================================================================
@@ -407,17 +412,16 @@
     els.badgeTask.textContent = doingCount;
     els.badgeTask.classList.toggle("hidden", doingCount === 0);
 
+    // Hide top header completely on Notes tab so Title lives directly inside the lower Note Block!
+    els.topHeader.classList.toggle("hidden", state.activeTab === "notes");
+
     if (state.activeTab === "quick") {
       els.hdrTitle.textContent = "Ghi nhanh";
       els.hdrBadge.textContent = qCount + " mục";
       els.hdrBadge.classList.toggle("hidden", qCount === 0);
-      els.notesHeaderControls.classList.add("hidden");
       els.btnTaskTargetToggle.classList.add("hidden");
       els.composerInput.placeholder = "Gõ luôn vào đây, nghĩ chỗ cất sau...";
     } else if (state.activeTab === "notes") {
-      els.hdrTitle.textContent = "Ghi chú";
-      els.hdrBadge.classList.add("hidden");
-      els.notesHeaderControls.classList.remove("hidden");
       els.btnTaskTargetToggle.classList.add("hidden");
       els.btnDisplayMode.querySelectorAll(".seg-opt").forEach((sp) => {
         sp.classList.toggle("active", sp.dataset.mode === state.notesDisplayMode);
@@ -427,7 +431,6 @@
     } else {
       els.hdrTitle.textContent = "Trọng tâm hôm nay";
       els.hdrBadge.classList.add("hidden");
-      els.notesHeaderControls.classList.add("hidden");
       els.btnTaskTargetToggle.classList.remove("hidden");
       els.btnTaskTargetToggle.textContent = state.taskTarget === "focus" ? "Hôm nay" : "Kho chờ";
       els.composerInput.placeholder = state.taskTarget === "focus"
@@ -476,15 +479,10 @@
     }).join("");
 
     if (curStream) {
-      const grpLabel = curStream.group === "active" ? "Đang giải quyết" : "Kho lưu trữ";
-      els.treeCollapsedLabel.textContent = grpLabel + " · " + curStream.title;
       els.activeStreamName.textContent = curStream.title;
     }
 
-    els.twoColGrid.classList.toggle("hidden", state.treeCollapsed);
-    els.treeCollapsedBar.classList.toggle("hidden", !state.treeCollapsed);
-    els.btnCollapseTreeManual.classList.toggle("hidden", state.treeCollapsed);
-
+    els.pinnedTreeBox.classList.toggle("collapsed", state.treeCollapsed);
     els.notesStreamList.classList.toggle("chat-mode", state.notesDisplayMode === "chat");
 
     if (!curStream) {
@@ -978,15 +976,20 @@
     els.composerInput.focus();
   });
 
+  function setTreeCollapsed(collapsed) {
+    if (state.treeCollapsed === collapsed) return;
+    state.treeCollapsed = collapsed;
+    els.pinnedTreeBox.classList.toggle("collapsed", collapsed);
+    vibrate(8);
+  }
+
   function updateKeyboardOpenState() {
     const activeEl = document.activeElement;
     const inputFocused = activeEl === els.composerInput || activeEl === els.searchInput;
     document.body.classList.toggle("keyboard-open", inputFocused);
     if (inputFocused && state.activeTab === "notes") {
       state.treeCollapsed = true;
-      els.twoColGrid.classList.add("hidden");
-      els.treeCollapsedBar.classList.remove("hidden");
-      els.btnCollapseTreeManual.classList.add("hidden");
+      els.pinnedTreeBox.classList.add("collapsed");
     }
   }
 
@@ -995,23 +998,48 @@
     setTimeout(() => document.body.classList.remove("keyboard-open"), 120);
   });
 
-  els.notesStreamList.addEventListener("scroll", () => {
-    if (els.notesStreamList.scrollTop > 36 && !state.treeCollapsed) {
-      state.treeCollapsed = true;
-      els.twoColGrid.classList.add("hidden");
-      els.treeCollapsedBar.classList.remove("hidden");
-      els.btnCollapseTreeManual.classList.add("hidden");
-    }
-  });
+  // =========================================================================
+  // NATURAL SWIPE UP / SWIPE DOWN GESTURE FOR 2-COLUMN TOP BLOCK
+  // =========================================================================
+  function bindVerticalDrawerSwipe(el, opts) {
+    if (!el) return;
+    let sy = 0;
+    let sx = 0;
+    let handled = false;
 
-  els.treeCollapsedBar.addEventListener("click", () => {
-    state.treeCollapsed = false;
-    renderNotesTab();
-  });
+    el.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1 || dragState) return;
+      sy = e.touches[0].clientY;
+      sx = e.touches[0].clientX;
+      handled = false;
+    }, { passive: true });
 
-  els.btnCollapseTreeManual.addEventListener("click", () => {
-    state.treeCollapsed = true;
-    renderNotesTab();
+    el.addEventListener("touchmove", (e) => {
+      if (handled || !sy || dragState) return;
+      const dy = e.touches[0].clientY - sy;
+      const dx = e.touches[0].clientX - sx;
+      if (Math.abs(dy) < (opts.threshold || 22) || Math.abs(dx) > Math.abs(dy) * 0.9) return;
+
+      if (dy < 0 && !state.treeCollapsed && opts.allowSwipeUp) {
+        handled = true;
+        setTreeCollapsed(true);
+      } else if (dy > 0 && state.treeCollapsed && opts.allowSwipeDown && (!opts.requireAtTop || el.scrollTop <= 2)) {
+        handled = true;
+        setTreeCollapsed(false);
+      }
+    }, { passive: true });
+
+    el.addEventListener("touchend", () => { sy = 0; handled = false; }, { passive: true });
+  }
+
+  // Swipe up/down on pill bar, merged title header, 2-col box, and note stream area!
+  bindVerticalDrawerSwipe(els.drawerHandleZone, { threshold: 14, allowSwipeUp: true, allowSwipeDown: true });
+  bindVerticalDrawerSwipe(els.notesStreamHeader, { threshold: 16, allowSwipeUp: true, allowSwipeDown: true });
+  bindVerticalDrawerSwipe(els.pinnedTreeBox, { threshold: 26, allowSwipeUp: true, allowSwipeDown: false });
+  bindVerticalDrawerSwipe(els.notesStreamList, { threshold: 26, allowSwipeUp: true, allowSwipeDown: true, requireAtTop: true });
+
+  els.drawerHandleZone.addEventListener("click", () => {
+    setTreeCollapsed(!state.treeCollapsed);
   });
 
   // =========================================================================
@@ -1161,12 +1189,22 @@
     }
   }, { passive: true });
 
-  els.btnThemeToggle.addEventListener("click", () => {
+  function toggleThemeAction() {
     state.theme = state.theme === "light" ? "slate" : "light";
     localStorage.setItem("oq_theme", state.theme);
     vibrate(8);
     applyTheme();
-  });
+  }
+
+  function toggleSearchAction() {
+    state.searchOpen = !state.searchOpen;
+    els.searchBarWrap.classList.toggle("hidden", !state.searchOpen);
+    if (state.searchOpen) els.searchInput.focus();
+    else { state.searchQuery = ""; els.searchInput.value = ""; renderAll(); }
+  }
+
+  els.btnThemeToggle.addEventListener("click", toggleThemeAction);
+  if (els.btnNotesTheme) els.btnNotesTheme.addEventListener("click", toggleThemeAction);
 
   els.btnDisplayMode.addEventListener("click", (e) => {
     const opt = e.target.closest(".seg-opt");
@@ -1177,12 +1215,8 @@
     renderAll();
   });
 
-  els.btnSearchToggle.addEventListener("click", () => {
-    state.searchOpen = !state.searchOpen;
-    els.searchBarWrap.classList.toggle("hidden", !state.searchOpen);
-    if (state.searchOpen) els.searchInput.focus();
-    else { state.searchQuery = ""; els.searchInput.value = ""; renderAll(); }
-  });
+  els.btnSearchToggle.addEventListener("click", toggleSearchAction);
+  if (els.btnNotesSearch) els.btnNotesSearch.addEventListener("click", toggleSearchAction);
 
   els.searchInput.addEventListener("input", () => {
     state.searchQuery = els.searchInput.value.trim();
@@ -1198,6 +1232,7 @@
   });
 
   els.btnSettings.addEventListener("click", openSettingsSheet);
+  if (els.btnNotesSettings) els.btnNotesSettings.addEventListener("click", openSettingsSheet);
 
   els.btnConnectVault.addEventListener("click", () => {
     if (!hasNative) return;

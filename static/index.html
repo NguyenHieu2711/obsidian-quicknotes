@@ -9,25 +9,15 @@
   <div id="app">
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Top Header (100% Flat Monoline SVG Icons) -->
+    <!-- Top Header (Shown on Nháp & Task; hidden on Notes to save vertical space) -->
     <header id="topHeader" class="top-header">
       <div class="hdr-left">
         <h1 id="hdrTitle" class="hdr-title">Ghi nhanh</h1>
         <span id="hdrBadge" class="hdr-count hidden">0</span>
       </div>
       <div class="hdr-actions">
-        <div id="notesHeaderControls" class="hdr-inline-group hidden">
-          <div id="btnDisplayMode" class="seg-mini">
-            <span data-mode="chat" class="seg-opt active">
-              <svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </span>
-            <span data-mode="block" class="seg-opt">
-              <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
-            </span>
-          </div>
-        </div>
         <button id="btnThemeToggle" class="icon-btn" type="button">
-          <svg id="iconThemeSun" class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
         </button>
         <button id="btnSearchToggle" class="icon-btn" type="button">
           <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -63,20 +53,21 @@
         <div id="quickList" class="scroll-area quick-list"></div>
       </section>
 
-      <!-- TAB 2: NOTES (Top 2-Column Split Border Box: Trái Đang giải quyết | Phải Kho lưu trữ) -->
+      <!-- TAB 2: NOTES (Compact 1-Line 2-Col Drawer + Swipe Up/Down + Title Merged into Note Block) -->
       <section id="viewNotes" class="tab-page">
         <div id="notesSplitWrap" class="notes-split-wrap">
-          <div id="pinnedTreeBox" class="pinned-2col-box">
+          <!-- Collapsible Compact 2-Column Top Box (Swipe Up to hide, Swipe Down to reveal) -->
+          <div id="pinnedTreeBox" class="pinned-2col-drawer">
             <div id="twoColGrid" class="two-col-grid">
               <!-- Left Column: Đang giải quyết -->
               <div class="col-pane col-left">
                 <div class="col-hdr">
                   <span class="col-hdr-label active-tone">
-                    <svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+                    <svg class="ic-xs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
                     <span>Đang giải quyết</span>
                   </span>
                   <button class="col-add-btn" data-add-stream="active" type="button">
-                    <svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    <svg class="ic-xs" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                   </button>
                 </div>
                 <div id="leftColStreams" class="col-list"></div>
@@ -86,36 +77,47 @@
               <div class="col-pane col-right">
                 <div class="col-hdr">
                   <span class="col-hdr-label">
-                    <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                    <svg class="ic-xs" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
                     <span>Kho lưu trữ</span>
                   </span>
                   <button class="col-add-btn" data-add-stream="archive" type="button">
-                    <svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    <svg class="ic-xs" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                   </button>
                 </div>
                 <div id="rightColStreams" class="col-list"></div>
               </div>
             </div>
-
-            <!-- Slim 1-line bar when collapsed -->
-            <button id="treeCollapsedBar" class="tree-collapsed-bar hidden" type="button">
-              <span id="treeCollapsedLabel" class="tcl-text">Đang giải quyết · Bảng cảm giác phấn đấu</span>
-              <span class="tcl-right">
-                <span>2 ngăn</span>
-                <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
-            </button>
           </div>
 
-          <div id="notesStreamHeader" class="stream-subhdr">
-            <span id="activeStreamName" class="stream-name">Bảng cảm giác phấn đấu</span>
-            <button id="btnCollapseTreeManual" class="mini-ghost-btn" type="button">
-              <span>Thu khung</span>
-              <svg class="ic-xs" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-            </button>
+          <!-- Swipe Gesture Handle + Merged Note Block Header -->
+          <div id="notesSwipeZone" class="notes-stream-shell">
+            <div id="drawerHandleZone" class="drawer-pill-zone">
+              <span class="drawer-pill-bar"></span>
+            </div>
+            <div id="notesStreamHeader" class="stream-merged-hdr">
+              <span id="activeStreamName" class="stream-name">Bảng cảm giác phấn đấu</span>
+              <div class="stream-hdr-tools">
+                <div id="btnDisplayMode" class="seg-mini">
+                  <span data-mode="chat" class="seg-opt active">
+                    <svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </span>
+                  <span data-mode="block" class="seg-opt">
+                    <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
+                  </span>
+                </div>
+                <button id="btnNotesTheme" class="icon-btn mini" type="button">
+                  <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                </button>
+                <button id="btnNotesSearch" class="icon-btn mini" type="button">
+                  <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                </button>
+                <button id="btnNotesSettings" class="icon-btn mini" type="button">
+                  <svg class="ic" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg>
+                </button>
+              </div>
+            </div>
+            <div id="notesStreamList" class="scroll-area stream-list"></div>
           </div>
-
-          <div id="notesStreamList" class="scroll-area stream-list"></div>
         </div>
       </section>
 
