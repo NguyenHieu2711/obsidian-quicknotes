@@ -9,21 +9,18 @@
   <div id="app">
     <div id="toast" class="toast hidden"></div>
 
-    <!-- Top Header (Shown on Nháp & Task; hidden on Notes to save vertical space) -->
+    <!-- Top Header (Shown on Nháp & Task; hidden on Notes) -->
     <header id="topHeader" class="top-header">
       <div class="hdr-left">
         <h1 id="hdrTitle" class="hdr-title">Ghi nhanh</h1>
         <span id="hdrBadge" class="hdr-count hidden">0</span>
       </div>
       <div class="hdr-actions">
-        <button id="btnThemeToggle" class="icon-btn" type="button">
-          <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        </button>
-        <button id="btnSearchToggle" class="icon-btn" type="button">
+        <button id="btnSearchToggle" class="icon-btn mini" type="button">
           <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         </button>
-        <button id="btnSettings" class="icon-btn" type="button">
-          <svg class="ic" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg>
+        <button id="btnSettings" class="icon-btn mini" type="button">
+          <svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
         </button>
       </div>
     </header>
@@ -97,22 +94,11 @@
             <div id="notesStreamHeader" class="stream-merged-hdr">
               <span id="activeStreamName" class="stream-name">Bảng cảm giác phấn đấu</span>
               <div class="stream-hdr-tools">
-                <div id="btnDisplayMode" class="seg-mini">
-                  <span data-mode="chat" class="seg-opt active">
-                    <svg class="ic" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  </span>
-                  <span data-mode="block" class="seg-opt">
-                    <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>
-                  </span>
-                </div>
-                <button id="btnNotesTheme" class="icon-btn mini" type="button">
-                  <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-                </button>
                 <button id="btnNotesSearch" class="icon-btn mini" type="button">
                   <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                 </button>
                 <button id="btnNotesSettings" class="icon-btn mini" type="button">
-                  <svg class="ic" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="10" cy="18" r="2" fill="var(--bg)"/></svg>
+                  <svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
                 </button>
               </div>
             </div>
@@ -143,15 +129,15 @@
     <!-- Tag Suggestion Strip -->
     <div id="tagSuggestBar" class="tag-suggest hidden"></div>
 
-    <!-- Bottom Composer Input Bar -->
+    <!-- Bottom Composer Input Bar (Send icon hidden until text is typed!) -->
     <div id="composerWrap" class="composer-wrap">
       <button id="btnTaskTargetToggle" class="task-target-chip hidden" type="button">Hôm nay</button>
       <div class="composer-box">
-        <textarea id="composerInput" rows="1" placeholder="Gõ nhanh ý mới..."></textarea>
+        <textarea id="composerInput" rows="1" placeholder="Tin nhắn"></textarea>
         <button id="btnVoice" class="voice-btn" type="button">
           <svg class="ic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
         </button>
-        <button id="btnSend" class="send-btn" type="button">
+        <button id="btnSend" class="send-btn hidden" type="button">
           <svg class="ic-send" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
       </div>

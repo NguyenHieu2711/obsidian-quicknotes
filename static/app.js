@@ -21,8 +21,10 @@
     trash: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
     folder: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
     refresh: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
-    sun: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
-    moon: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+    chat: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    block: '<svg class="ic-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>',
+    sun: '<svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
+    moon: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
   };
 
   const state = {
@@ -40,7 +42,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.4",
+    appVersion: "1.0.5",
 
     quickItems: [],
     noteStreams: [],
@@ -57,11 +59,8 @@
     topHeader: document.getElementById("topHeader"),
     hdrTitle: document.getElementById("hdrTitle"),
     hdrBadge: document.getElementById("hdrBadge"),
-    btnDisplayMode: document.getElementById("btnDisplayMode"),
-    btnThemeToggle: document.getElementById("btnThemeToggle"),
     btnSearchToggle: document.getElementById("btnSearchToggle"),
     btnSettings: document.getElementById("btnSettings"),
-    btnNotesTheme: document.getElementById("btnNotesTheme"),
     btnNotesSearch: document.getElementById("btnNotesSearch"),
     btnNotesSettings: document.getElementById("btnNotesSettings"),
     searchBarWrap: document.getElementById("searchBarWrap"),
@@ -146,9 +145,12 @@
   function applyTheme() {
     document.body.classList.toggle("theme-light", state.theme === "light");
     document.body.classList.toggle("theme-slate", state.theme !== "light");
-    const iconHtml = state.theme === "light" ? ICONS.moon : ICONS.sun;
-    els.btnThemeToggle.innerHTML = iconHtml;
-    if (els.btnNotesTheme) els.btnNotesTheme.innerHTML = iconHtml;
+  }
+
+  function syncComposerButtons() {
+    const hasText = els.composerInput.value.trim().length > 0;
+    els.btnSend.classList.toggle("hidden", !hasText);
+    els.btnVoice.classList.toggle("hidden", hasText);
   }
 
   // =========================================================================
@@ -420,23 +422,18 @@
       els.hdrBadge.textContent = qCount + " mục";
       els.hdrBadge.classList.toggle("hidden", qCount === 0);
       els.btnTaskTargetToggle.classList.add("hidden");
-      els.composerInput.placeholder = "Gõ luôn vào đây, nghĩ chỗ cất sau...";
+      els.composerInput.placeholder = "Tin nhắn";
     } else if (state.activeTab === "notes") {
       els.btnTaskTargetToggle.classList.add("hidden");
-      els.btnDisplayMode.querySelectorAll(".seg-opt").forEach((sp) => {
-        sp.classList.toggle("active", sp.dataset.mode === state.notesDisplayMode);
-      });
-      const st = getActiveStream();
-      els.composerInput.placeholder = st ? "Ghi vào " + st.title + "..." : "Ghi vào mạch này...";
+      els.composerInput.placeholder = "Tin nhắn";
     } else {
       els.hdrTitle.textContent = "Trọng tâm hôm nay";
       els.hdrBadge.classList.add("hidden");
       els.btnTaskTargetToggle.classList.remove("hidden");
       els.btnTaskTargetToggle.textContent = state.taskTarget === "focus" ? "Hôm nay" : "Kho chờ";
-      els.composerInput.placeholder = state.taskTarget === "focus"
-        ? "Thêm việc trọng tâm hôm nay..."
-        : "Thêm việc vào Kho chờ Task...";
+      els.composerInput.placeholder = "Tin nhắn";
     }
+    syncComposerButtons();
   }
 
   function renderQuickTab() {
@@ -863,10 +860,13 @@
 
   function openSettingsSheet() {
     const statusText = state.vaultConnected ? "Đã kết nối: " + state.vaultLabel : "Chưa chọn thư mục Vault";
-    const nextThemeLabel = state.theme === "light" ? "Chuyển sang tông Xám dịu (Soft Slate)" : "Chuyển sang tông Trắng sáng (Clean Light)";
+    const nextThemeLabel = state.theme === "light" ? "Đổi sang tông Xám dịu (Soft Slate)" : "Đổi sang tông Trắng sáng (Clean Light)";
+    const nextModeLabel = state.notesDisplayMode === "chat" ? "Đổi kiểu Notes sang Thẻ Khối" : "Đổi kiểu Notes sang Bong bóng Chat";
+    const nextModeIcon = state.notesDisplayMode === "chat" ? ICONS.block : ICONS.chat;
     openSheet(
-      '<div class="sheet-title">Cài đặt & Đồng bộ (v' + escHtml(state.appVersion) + ")</div>" +
+      '<div class="sheet-title">Tùy chọn (v' + escHtml(state.appVersion) + ")</div>" +
       '<div class="sheet-group-label">Giao diện hiển thị</div>' +
+      '<button id="btnSwitchNotesModeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + nextModeIcon + "<span>" + nextModeLabel + "</span></span>" + ICONS.arrowRight + "</button>" +
       '<button id="btnSwitchThemeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + (state.theme === "light" ? ICONS.moon : ICONS.sun) + "<span>" + nextThemeLabel + "</span></span>" + ICONS.arrowRight + "</button>" +
       '<div class="sheet-group-label">Thư mục Obsidian Vault (Syncthing)</div>' +
       '<button id="btnPickVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.folder + "<span>" + escHtml(statusText) + '</span></span><span style="color:var(--accent);font-weight:600;">Chọn thư mục</span></button>' +
@@ -875,6 +875,12 @@
       '<button id="btnReloadVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Đọc lại dữ liệu từ Syncthing</span></span>' + ICONS.arrowRight + "</button>"
     );
 
+    document.getElementById("btnSwitchNotesModeSheet").addEventListener("click", () => {
+      state.notesDisplayMode = state.notesDisplayMode === "chat" ? "block" : "chat";
+      localStorage.setItem("oq_notes_display", state.notesDisplayMode);
+      closeSheet();
+      renderAll();
+    });
     document.getElementById("btnSwitchThemeSheet").addEventListener("click", () => {
       state.theme = state.theme === "light" ? "slate" : "light";
       localStorage.setItem("oq_theme", state.theme);
@@ -936,6 +942,7 @@
     els.composerInput.value = "";
     els.composerInput.style.height = "auto";
     els.tagSuggestBar.classList.add("hidden");
+    syncComposerButtons();
     renderAll();
   }
 
@@ -950,6 +957,7 @@
   els.composerInput.addEventListener("input", () => {
     els.composerInput.style.height = "auto";
     els.composerInput.style.height = Math.min(els.composerInput.scrollHeight, 108) + "px";
+    syncComposerButtons();
 
     const val = els.composerInput.value;
     const m = val.match(/(^|\s)(#[\p{L}\p{N}_/-]*)$/u);
@@ -973,6 +981,7 @@
     const tag = btn.getAttribute("data-pick-tag");
     els.composerInput.value = els.composerInput.value.replace(/(#[\p{L}\p{N}_/-]*)$/u, tag + " ");
     els.tagSuggestBar.classList.add("hidden");
+    syncComposerButtons();
     els.composerInput.focus();
   });
 
@@ -983,19 +992,26 @@
     vibrate(8);
   }
 
+  // Measure actual viewport height so dismissing Android keyboard ALWAYS restores the 3 bottom tabs immediately!
+  let maxViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
   function updateKeyboardOpenState() {
-    const activeEl = document.activeElement;
-    const inputFocused = activeEl === els.composerInput || activeEl === els.searchInput;
-    document.body.classList.toggle("keyboard-open", inputFocused);
-    if (inputFocused && state.activeTab === "notes") {
+    const curH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if (curH > maxViewportHeight) maxViewportHeight = curH;
+    const kbVisible = (maxViewportHeight - curH) > 115;
+    document.body.classList.toggle("keyboard-open", kbVisible);
+    if (kbVisible && state.activeTab === "notes" && !state.treeCollapsed) {
       state.treeCollapsed = true;
       els.pinnedTreeBox.classList.add("collapsed");
     }
   }
 
-  els.composerInput.addEventListener("focus", updateKeyboardOpenState);
+  window.addEventListener("resize", updateKeyboardOpenState);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateKeyboardOpenState);
+  }
   els.composerInput.addEventListener("blur", () => {
-    setTimeout(() => document.body.classList.remove("keyboard-open"), 120);
+    setTimeout(updateKeyboardOpenState, 80);
   });
 
   // =========================================================================
@@ -1189,31 +1205,12 @@
     }
   }, { passive: true });
 
-  function toggleThemeAction() {
-    state.theme = state.theme === "light" ? "slate" : "light";
-    localStorage.setItem("oq_theme", state.theme);
-    vibrate(8);
-    applyTheme();
-  }
-
   function toggleSearchAction() {
     state.searchOpen = !state.searchOpen;
     els.searchBarWrap.classList.toggle("hidden", !state.searchOpen);
     if (state.searchOpen) els.searchInput.focus();
     else { state.searchQuery = ""; els.searchInput.value = ""; renderAll(); }
   }
-
-  els.btnThemeToggle.addEventListener("click", toggleThemeAction);
-  if (els.btnNotesTheme) els.btnNotesTheme.addEventListener("click", toggleThemeAction);
-
-  els.btnDisplayMode.addEventListener("click", (e) => {
-    const opt = e.target.closest(".seg-opt");
-    const next = opt ? opt.dataset.mode : (state.notesDisplayMode === "chat" ? "block" : "chat");
-    state.notesDisplayMode = next;
-    localStorage.setItem("oq_notes_display", next);
-    vibrate(8);
-    renderAll();
-  });
 
   els.btnSearchToggle.addEventListener("click", toggleSearchAction);
   if (els.btnNotesSearch) els.btnNotesSearch.addEventListener("click", toggleSearchAction);
@@ -1377,6 +1374,7 @@
   window.__onVoiceText = (txt) => {
     if (!txt) return;
     els.composerInput.value = (els.composerInput.value ? els.composerInput.value + " " : "") + txt;
+    syncComposerButtons();
     els.composerInput.focus();
   };
   window.__reloadVaultFromNative = () => { loadVaultState(); showToast("Đã kết nối Vault Syncthing"); };
