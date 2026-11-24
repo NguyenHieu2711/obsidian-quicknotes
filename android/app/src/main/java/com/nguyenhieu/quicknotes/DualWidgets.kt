@@ -184,7 +184,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_NOTES)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_FILTER_GROUP)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://notes_grp/$widgetId")
             }
             views.setOnClickPendingIntent(
@@ -209,7 +209,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_NOTES)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_ADD_NOTE)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://notes_add/$widgetId")
             }
             views.setOnClickPendingIntent(
@@ -229,11 +229,11 @@ class NotesWidgetProvider : AppWidgetProvider() {
             views.setRemoteAdapter(R.id.w_notes_list, svcIntent)
             views.setEmptyView(R.id.w_notes_list, R.id.w_notes_empty)
 
-            val itemTemplateIntent = Intent(context, WidgetActionActivity::class.java).apply {
+            val itemTemplateIntent = Intent(context, WidgetTrampolineActivity::class.java).apply {
                 action = DualWidgetContract.ACTION_ITEM_CLICK
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_NOTES)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://notes_item_tpl/$widgetId")
             }
             views.setPendingIntentTemplate(
@@ -408,7 +408,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_TASKS)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_FILTER_GROUP)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://tasks_grp/$widgetId")
             }
             views.setOnClickPendingIntent(
@@ -433,7 +433,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_TASKS)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_ADD_TASK)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://tasks_add/$widgetId")
             }
             views.setOnClickPendingIntent(
@@ -453,11 +453,11 @@ class TasksWidgetProvider : AppWidgetProvider() {
             views.setRemoteAdapter(R.id.w_tasks_list, svcIntent)
             views.setEmptyView(R.id.w_tasks_list, R.id.w_tasks_empty)
 
-            val itemTemplateIntent = Intent(context, WidgetActionActivity::class.java).apply {
+            val itemTemplateIntent = Intent(context, WidgetTrampolineActivity::class.java).apply {
                 action = DualWidgetContract.ACTION_ITEM_CLICK
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_TASKS)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://tasks_item_tpl/$widgetId")
             }
             views.setPendingIntentTemplate(

@@ -12,15 +12,24 @@
         <item name="android:windowIsFloating">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:backgroundDimAmount">0.55</item>
+        <item name="android:backgroundDimAmount">0.42</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <!-- Ultra-lightweight native Activity theme (zero AppCompat inflation overhead) -->
-    <style name="Theme.ObsidianQuick.TransparentAction" parent="@android:style/Theme.Translucent.NoTitleBar">
+    <!-- True Floating Dialog Overlay: keeps Samsung top Wi-Fi bar & bottom gesture bar 100% transparent! -->
+    <style name="Theme.ObsidianQuick.WidgetDialog" parent="@android:style/Theme.DeviceDefault.Dialog">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">true</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
-        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.32</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowDisablePreview">true</item>
     </style>

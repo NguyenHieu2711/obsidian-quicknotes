@@ -84,11 +84,16 @@ class WidgetActionActivity : Activity() {
             }
         }
 
-        // 2. Interactive floating sheet modes — enable subtle dim backdrop
+        // Interactive floating dialog card — keep top Wi-Fi bar & bottom gesture bar 100% transparent!
         window?.apply {
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.55f)
+            statusBarColor = Color.TRANSPARENT
+            navigationBarColor = Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                isStatusBarContrastEnforced = false
+                isNavigationBarContrastEnforced = false
+            }
         }
+        setFinishOnTouchOutside(true)
 
         when (mode) {
             DualWidgetContract.MODE_ADD_NOTE -> renderQuickAddSheet(isTask = false, widgetId = widgetId)
@@ -125,31 +130,23 @@ class WidgetActionActivity : Activity() {
     }
 
     private fun mountBottomCard(card: LinearLayout, openKeyboardFor: EditText? = null) {
-        val outer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            setPadding(dp(12), dp(24), dp(12), dp(14))
-            setOnClickListener { closeWindowNow() }
+        setContentView(card)
+        window?.apply {
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.94f).toInt(),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+            setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            val lp = attributes
+            lp.y = dp(14)
+            attributes = lp
+            statusBarColor = Color.TRANSPARENT
+            navigationBarColor = Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                isStatusBarContrastEnforced = false
+                isNavigationBarContrastEnforced = false
+            }
         }
-        card.isClickable = true
-        outer.addView(
-            card,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-        setContentView(
-            outer,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-        window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
         if (openKeyboardFor != null) {
             @Suppress("DEPRECATION")
             window?.setSoftInputMode(
