@@ -159,6 +159,21 @@
       <div class="sheet-handle"></div>
       <div id="sheetContent" class="sheet-content"></div>
     </div>
+
+    <!-- Centered Focus Edit Modal (Blurred Backdrop) -->
+    <div id="focusEditOverlay" class="focus-edit-overlay hidden">
+      <div id="focusEditCard" class="focus-edit-card">
+        <textarea id="focusEditInput" class="focus-edit-textarea" rows="3" placeholder="Nội dung..."></textarea>
+        <div id="focusEditChildren" class="focus-edit-children hidden"></div>
+        <div class="focus-edit-bar">
+          <button id="btnFocusStar" class="focus-star-btn" type="button"></button>
+          <div class="focus-edit-right">
+            <button id="btnFocusCancel" class="focus-ghost-btn" type="button">Hủy</button>
+            <button id="btnFocusSave" class="focus-save-btn" type="button">Lưu</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="./app.js"></script>

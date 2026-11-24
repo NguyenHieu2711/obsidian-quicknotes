@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.2.1",
+    appVersion: "1.2.2",
 
     quickItems: [],
     noteStreams: [],
@@ -103,6 +103,13 @@
     sheetBackdrop: document.getElementById("sheetBackdrop"),
     bottomSheet: document.getElementById("bottomSheet"),
     sheetContent: document.getElementById("sheetContent"),
+    focusEditOverlay: document.getElementById("focusEditOverlay"),
+    focusEditCard: document.getElementById("focusEditCard"),
+    focusEditInput: document.getElementById("focusEditInput"),
+    focusEditChildren: document.getElementById("focusEditChildren"),
+    btnFocusStar: document.getElementById("btnFocusStar"),
+    btnFocusCancel: document.getElementById("btnFocusCancel"),
+    btnFocusSave: document.getElementById("btnFocusSave"),
     toast: document.getElementById("toast")
   };
 
@@ -473,11 +480,9 @@
       return (
         '<div class="quick-item" data-id="' + it.id + '">' +
           '<div class="qi-body" data-edit-quick="' + it.id + '">' +
-            (it.time ? '<div class="qi-time">' + escHtml(it.time) + "</div>" : "") +
             '<div class="qi-text">' + formatRichText(it.text) + "</div>" +
             childrenHtml +
           "</div>" +
-          '<button class="dots-btn" data-triage="' + it.id + '" type="button">' + ICONS.dots + "</button>" +
         "</div>"
       );
     }).join("");
@@ -520,10 +525,6 @@
         : "";
       return (
         '<div class="note-entry" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
-          '<div class="ne-meta">' +
-            '<span>' + escHtml(it.time || "") + '</span>' +
-            '<button class="ne-more-btn" data-move-entry="' + it.id + '" data-stream-id="' + curStream.id + '" type="button">' + ICONS.dots + '</button>' +
-          '</div>' +
           '<div class="ne-text">' + formatRichText(it.text) + "</div>" +
           subHtml +
         "</div>"
@@ -644,8 +645,15 @@
 
     const activeStreams = state.noteStreams.filter((s) => s.group === "active");
     const archiveStreams = state.noteStreams.filter((s) => s.group === "archive");
+    const isStarred = /^★\s*/.test(item.text || "");
 
-    let html = '<div class="sheet-title">Đẩy mục này sang đâu?</div>';
+    let html = '<div class="sheet-top-bar">' +
+      '<button class="sheet-pill-action ' + (isStarred ? "starred" : "") + '" data-sheet-star-quick="' + escHtml(item.id) + '" type="button">' + (isStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isStarred ? "Bỏ sao" : "Gắn sao") + '</span></button>' +
+      '<button class="sheet-pill-action" data-sheet-edit-quick="' + escHtml(item.id) + '" type="button">' + ICONS.edit + '<span>Sửa</span></button>' +
+      '<button class="sheet-pill-action" data-sheet-copy-quick="' + escHtml(item.id) + '" type="button">' + ICONS.copy + '<span>Chép</span></button>' +
+      '<button class="sheet-pill-action danger" data-sheet-del-quick="' + escHtml(item.id) + '" type="button">' + ICONS.trash + '<span>Xóa</span></button>' +
+    "</div>";
+
     html += '<div class="sheet-group-label">Đang giải quyết</div>';
     for (const st of activeStreams) {
       html += '<button class="sheet-row" data-move-to-stream="' + escHtml(st.id) + '" type="button"><span class="sheet-row-left">' + ICONS.target + '<span>' + escHtml(st.title) + "</span></span>" + ICONS.arrowRight + "</button>";
@@ -657,13 +665,6 @@
     html += '<div class="sheet-group-label">Biến thành Công việc (Task)</div>';
     html += '<button class="sheet-row" data-move-to-task="focus" type="button"><span class="sheet-row-left">' + ICONS.task + '<span>Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button class="sheet-row" data-move-to-task="warehouse" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>Kho chờ Task</span></span>' + ICONS.arrowRight + "</button>";
-
-    const isStarred = /^★\s*/.test(item.text || "");
-    html += '<div class="sheet-inline-actions">' +
-      '<button class="sheet-row" data-sheet-star-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + (isStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isStarred ? "Bỏ sao" : "Sao") + '</span></span></button>' +
-      '<button class="sheet-row" data-sheet-edit-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + ICONS.edit + '<span>Sửa</span></span></button>' +
-      '<button class="sheet-row danger" data-sheet-del-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa</span></span></button>' +
-    "</div>";
 
     openSheet(html);
 
@@ -713,7 +714,16 @@
       persistQuickNotes();
       renderAll();
     });
-    els.sheetContent.querySelector("[data-sheet-edit-quick]").addEventListener("click", () => openEditNoteSheet("quick", null, item));
+    els.sheetContent.querySelector("[data-sheet-copy-quick]").addEventListener("click", () => {
+      const full = [item.text.replace(/^★\s*/, "")].concat(item.children || []).join("\n- ");
+      if (hasNative) window.AndroidBridge.setClipboardText(full);
+      closeSheet();
+      showToast("Đã sao chép");
+    });
+    els.sheetContent.querySelector("[data-sheet-edit-quick]").addEventListener("click", () => {
+      closeSheet();
+      openEditNoteSheet("quick", null, item);
+    });
     els.sheetContent.querySelector("[data-sheet-del-quick]").addEventListener("click", () => {
       closeSheet();
       vanishQuickItemAndRun(item.id, () => {
@@ -753,8 +763,14 @@
 
     const otherActive = state.noteStreams.filter((s) => s.group === "active" && s.id !== sourceStream.id);
     const otherArchive = state.noteStreams.filter((s) => s.group === "archive" && s.id !== sourceStream.id);
+    const isItemStarred = /^★\s*/.test(item.text || "");
 
-    let html = '<div class="sheet-title">Đẩy mục này sang đâu?</div>';
+    let html = '<div class="sheet-top-bar">' +
+      '<button class="sheet-pill-action ' + (isItemStarred ? "starred" : "") + '" data-note-sheet-star="1" type="button">' + (isItemStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isItemStarred ? "Bỏ sao" : "Gắn sao") + '</span></button>' +
+      '<button class="sheet-pill-action" data-note-sheet-edit="1" type="button">' + ICONS.edit + '<span>Sửa</span></button>' +
+      '<button class="sheet-pill-action" data-note-sheet-copy="1" type="button">' + ICONS.copy + '<span>Chép</span></button>' +
+      '<button class="sheet-pill-action danger" data-note-sheet-del="1" type="button">' + ICONS.trash + '<span>Xóa</span></button>' +
+    "</div>";
 
     if (otherActive.length > 0) {
       html += '<div class="sheet-group-label">Đang giải quyết</div>';
@@ -774,14 +790,6 @@
     html += '<button class="sheet-row" data-note-move-quick="1" type="button"><span class="sheet-row-left">' + ICONS.zapSm + '<span>Đưa về khay Nháp nhanh</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button class="sheet-row" data-note-move-task="focus" type="button"><span class="sheet-row-left">' + ICONS.task + '<span>Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button class="sheet-row" data-note-move-task="warehouse" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>Kho chờ Task</span></span>' + ICONS.arrowRight + "</button>";
-
-    const isItemStarred = /^★\s*/.test(item.text || "");
-    html += '<div class="sheet-inline-actions">' +
-      '<button class="sheet-row" data-note-sheet-star="1" type="button"><span class="sheet-row-left">' + (isItemStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isItemStarred ? "Bỏ sao" : "Sao") + '</span></span></button>' +
-      '<button class="sheet-row" data-note-sheet-edit="1" type="button"><span class="sheet-row-left">' + ICONS.edit + '<span>Sửa</span></span></button>' +
-      '<button class="sheet-row" data-note-sheet-copy="1" type="button"><span class="sheet-row-left">' + ICONS.copy + '<span>Chép</span></span></button>' +
-      '<button class="sheet-row danger" data-note-sheet-del="1" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa</span></span></button>' +
-    "</div>";
 
     openSheet(html);
 
@@ -852,6 +860,7 @@
       renderAll();
     });
     els.sheetContent.querySelector("[data-note-sheet-edit]").addEventListener("click", () => {
+      closeSheet();
       openEditNoteSheet("notes", sourceStream, item);
     });
     els.sheetContent.querySelector("[data-note-sheet-copy]").addEventListener("click", () => {
@@ -869,79 +878,94 @@
     });
   }
 
+  let activeFocusEdit = null;
+
+  function closeFocusEditModal() {
+    activeFocusEdit = null;
+    els.focusEditOverlay.classList.add("hidden");
+    els.focusEditInput.blur();
+  }
+
+  function syncFocusTextareaHeight() {
+    els.focusEditInput.style.height = "auto";
+    els.focusEditInput.style.height = Math.min(260, Math.max(84, els.focusEditInput.scrollHeight)) + "px";
+  }
+
+  function syncFocusStarBtn(isStarred) {
+    els.btnFocusStar.classList.toggle("active", isStarred);
+    els.btnFocusStar.innerHTML = (isStarred ? ICONS.starFill : ICONS.star) + "<span>" + (isStarred ? "Có sao" : "Sao") + "</span>";
+  }
+
   function openEditNoteSheet(scope, stream, item) {
-    let html = '<div class="sheet-title">Chỉnh sửa nội dung</div>';
-    html += '<textarea id="modalEditArea" class="modal-input" rows="3">' + escHtml(item.text) + "</textarea>";
+    if (!item) return;
+    closeSheet();
+    const starredNow = /^★\s*/.test(item.text || "");
+    const cleanTxt = (item.text || "").replace(/^★\s*/, "");
+    activeFocusEdit = { scope: scope, stream: stream, item: item, starred: starredNow };
+
+    els.focusEditInput.value = cleanTxt;
+    syncFocusStarBtn(starredNow);
 
     if (item.children && item.children.length > 0) {
-      html += '<div class="sheet-group-label">Các ý con đã gộp (Chạm để tách riêng)</div>';
-      item.children.forEach((ch, idx) => {
-        html += '<button class="sheet-row" data-unmerge-idx="' + idx + '" type="button"><span>' + escHtml(ch) + "</span>" + ICONS.arrowUpRight + "</button>";
-      });
-    }
-
-    html += '<button id="btnSaveNoteEdit" class="primary-btn" type="button">Lưu thay đổi</button>';
-    if (scope === "notes" && stream) {
-      html += '<button id="btnMoveFromEditSheet" class="sheet-row" style="margin-top:8px;" type="button"><span class="sheet-row-left">' + ICONS.arrowRight + '<span>Đẩy sang mạch khác / Task</span></span>' + ICONS.arrowRight + "</button>";
-    }
-    html += '<div class="sheet-inline-actions">' +
-      '<button id="btnCopyNoteText" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.copy + '<span>Sao chép</span></span></button>' +
-      '<button id="btnDeleteNoteEntry" class="sheet-row danger" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa mục</span></span></button>' +
-    "</div>";
-
-    openSheet(html);
-    const area = document.getElementById("modalEditArea");
-    const moveFromEditBtn = document.getElementById("btnMoveFromEditSheet");
-    if (moveFromEditBtn) {
-      moveFromEditBtn.addEventListener("click", () => openStreamItemMoveSheet(stream, item));
-    }
-
-    document.getElementById("btnSaveNoteEdit").addEventListener("click", () => {
-      const val = area.value.trim();
-      if (val) {
-        item.text = val;
-        persistQuickNotes();
-        renderAll();
-      }
-      closeSheet();
-    });
-
-    document.getElementById("btnCopyNoteText").addEventListener("click", () => {
-      const full = [item.text].concat(item.children || []).join("\n- ");
-      if (hasNative) window.AndroidBridge.setClipboardText(full);
-      closeSheet();
-      showToast("Đã sao chép");
-    });
-
-    document.getElementById("btnDeleteNoteEntry").addEventListener("click", () => {
-      if (scope === "quick") state.quickItems = state.quickItems.filter((x) => x.id !== item.id);
-      else if (stream) stream.items = stream.items.filter((x) => x.id !== item.id);
-      persistQuickNotes();
-      closeSheet();
-      renderAll();
-      showToast("Đã xóa");
-    });
-
-    els.sheetContent.querySelectorAll("[data-unmerge-idx]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = parseInt(btn.getAttribute("data-unmerge-idx"), 10);
-        const [removed] = item.children.splice(idx, 1);
-        if (removed) {
-          const standalone = { id: makeId("ni"), time: nowHHMM(), text: removed, children: [] };
-          if (scope === "quick") {
-            const pos = state.quickItems.indexOf(item);
-            state.quickItems.splice(pos + 1, 0, standalone);
-          } else if (stream) {
-            const pos = stream.items.indexOf(item);
-            stream.items.splice(pos + 1, 0, standalone);
+      els.focusEditChildren.classList.remove("hidden");
+      els.focusEditChildren.innerHTML = item.children.map((ch, idx) =>
+        '<button class="sheet-row" data-unmerge-idx="' + idx + '" type="button"><span>' + escHtml(ch) + "</span>" + ICONS.arrowUpRight + "</button>"
+      ).join("");
+      els.focusEditChildren.querySelectorAll("[data-unmerge-idx]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-unmerge-idx"), 10);
+          const [removed] = item.children.splice(idx, 1);
+          if (removed) {
+            const standalone = { id: makeId("ni"), time: nowHHMM(), text: removed, children: [] };
+            if (scope === "quick") {
+              const pos = state.quickItems.indexOf(item);
+              state.quickItems.splice(pos + 1, 0, standalone);
+            } else if (stream) {
+              const pos = stream.items.indexOf(item);
+              stream.items.splice(pos + 1, 0, standalone);
+            }
+            persistQuickNotes();
+            renderAll();
+            openEditNoteSheet(scope, stream, item);
           }
-          persistQuickNotes();
-          renderAll();
-          openEditNoteSheet(scope, stream, item);
-        }
+        });
       });
-    });
+    } else {
+      els.focusEditChildren.classList.add("hidden");
+      els.focusEditChildren.innerHTML = "";
+    }
+
+    els.focusEditOverlay.classList.remove("hidden");
+    syncFocusTextareaHeight();
+    setTimeout(() => {
+      els.focusEditInput.focus();
+      const len = els.focusEditInput.value.length;
+      try { els.focusEditInput.setSelectionRange(len, len); } catch (_) {}
+    }, 35);
   }
+
+  els.focusEditInput.addEventListener("input", syncFocusTextareaHeight);
+  els.btnFocusStar.addEventListener("click", () => {
+    if (!activeFocusEdit) return;
+    activeFocusEdit.starred = !activeFocusEdit.starred;
+    vibrate(8);
+    syncFocusStarBtn(activeFocusEdit.starred);
+  });
+  els.btnFocusCancel.addEventListener("click", closeFocusEditModal);
+  els.focusEditOverlay.addEventListener("click", (e) => {
+    if (e.target === els.focusEditOverlay) closeFocusEditModal();
+  });
+  els.btnFocusSave.addEventListener("click", () => {
+    if (!activeFocusEdit) return;
+    const val = els.focusEditInput.value.trim();
+    if (val) {
+      activeFocusEdit.item.text = activeFocusEdit.starred ? ("★ " + val) : val;
+      persistQuickNotes();
+      renderAll();
+    }
+    vibrate(10);
+    closeFocusEditModal();
+  });
 
   function openAddStreamSheet(defaultGroup) {
     const grp = defaultGroup === "archive" ? "archive" : "active";
@@ -1230,17 +1254,63 @@
   });
 
   // =========================================================================
-  // LONG-PRESS BODY DRAG: MERGE OR REORDER
+  // LONG-PRESS FOR STAR + BOTTOM SETTINGS (AND HOLD-MOVE FOR MERGE/REORDER)
   // =========================================================================
   let dragState = null;
+  let suppressClickUntil = 0;
+
+  els.notesStreamList.addEventListener("contextmenu", (e) => e.preventDefault());
+  els.quickList.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  function setupQuickLongPress(container) {
+    let pressTimer = null;
+    let startX = 0;
+    let startY = 0;
+    let heldEl = null;
+
+    container.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      const card = e.target.closest(".quick-item");
+      if (!card) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      heldEl = card;
+      const itemId = card.getAttribute("data-id");
+
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        suppressClickUntil = Date.now() + 700;
+        card.classList.add("holding-focus");
+        openQuickTriageSheet(itemId);
+      }, 320);
+    }, { passive: true });
+
+    container.addEventListener("touchmove", (e) => {
+      if (!pressTimer) return;
+      const dx = Math.abs(e.touches[0].clientX - startX);
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dx > 10 || dy > 10) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    }, { passive: true });
+
+    const endQuickHold = () => {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (heldEl) { heldEl.classList.remove("holding-focus"); heldEl = null; }
+    };
+    container.addEventListener("touchend", endQuickHold);
+    container.addEventListener("touchcancel", endQuickHold);
+  }
 
   function setupLongPressMergeDrag(container) {
     let pressTimer = null;
+    let holdCandidate = null;
     let startX = 0;
     let startY = 0;
 
     container.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1 || e.target.closest("[data-move-entry]")) return;
+      if (e.touches.length !== 1) return;
       const card = e.target.closest(".note-entry");
       if (!card) return;
       startX = e.touches[0].clientX;
@@ -1249,34 +1319,47 @@
       const streamId = card.getAttribute("data-stream-id");
 
       pressTimer = setTimeout(() => {
+        pressTimer = null;
         const stream = state.noteStreams.find((s) => s.id === streamId);
         const item = stream ? stream.items.find((x) => x.id === entryId) : null;
         if (!stream || !item) return;
 
-        vibrate(18);
-        card.classList.add("dragging-source");
-        const ghost = document.createElement("div");
-        ghost.className = "drag-ghost";
-        ghost.textContent = item.text;
-        ghost.style.left = Math.max(12, startX - 90) + "px";
-        ghost.style.top = (startY - 26) + "px";
-        document.body.appendChild(ghost);
-
-        dragState = { stream, item, sourceEl: card, ghostEl: ghost, targetEl: null, dropAction: null };
-      }, 230);
+        suppressClickUntil = Date.now() + 700;
+        card.classList.add("holding-focus");
+        holdCandidate = { stream, item, card };
+        openStreamItemMoveSheet(stream, item);
+      }, 320);
     }, { passive: true });
 
     container.addEventListener("touchmove", (e) => {
-      if (!dragState) {
-        if (pressTimer) {
-          const dx = Math.abs(e.touches[0].clientX - startX);
-          const dy = Math.abs(e.touches[0].clientY - startY);
-          if (dx > 10 || dy > 10) { clearTimeout(pressTimer); pressTimer = null; }
-        }
-        return;
-      }
-      e.preventDefault();
       const touch = e.touches[0];
+      const dx = Math.abs(touch.clientX - startX);
+      const dy = Math.abs(touch.clientY - startY);
+
+      if (!dragState) {
+        if (pressTimer && (dx > 10 || dy > 10)) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+          return;
+        }
+        if (holdCandidate && (dx > 22 || dy > 22)) {
+          const { stream, item, card } = holdCandidate;
+          holdCandidate = null;
+          closeSheet();
+          card.classList.remove("holding-focus");
+          card.classList.add("dragging-source");
+          const ghost = document.createElement("div");
+          ghost.className = "drag-ghost";
+          ghost.textContent = item.text.replace(/^★\s*/, "");
+          ghost.style.left = Math.max(12, touch.clientX - 90) + "px";
+          ghost.style.top = (touch.clientY - 26) + "px";
+          document.body.appendChild(ghost);
+          dragState = { stream, item, sourceEl: card, ghostEl: ghost, targetEl: null, dropAction: null };
+        }
+        if (!dragState) return;
+      }
+
+      e.preventDefault();
       dragState.ghostEl.style.left = Math.max(12, Math.min(window.innerWidth - 220, touch.clientX - 90)) + "px";
       dragState.ghostEl.style.top = (touch.clientY - 28) + "px";
 
@@ -1304,6 +1387,10 @@
 
     const finishTouch = () => {
       if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (holdCandidate) {
+        holdCandidate.card.classList.remove("holding-focus");
+        holdCandidate = null;
+      }
       if (!dragState) return;
       const { stream, item, targetEl, dropAction, ghostEl, sourceEl } = dragState;
       dragState = null;
@@ -1338,6 +1425,7 @@
     container.addEventListener("touchcancel", finishTouch);
   }
 
+  setupQuickLongPress(els.quickList);
   setupLongPressMergeDrag(els.notesStreamList);
 
   // =========================================================================
@@ -1413,17 +1501,16 @@
   });
 
   els.quickList.addEventListener("click", (e) => {
-    const triageBtn = e.target.closest("[data-triage]");
-    if (triageBtn) { openQuickTriageSheet(triageBtn.getAttribute("data-triage")); return; }
-    const editArea = e.target.closest("[data-edit-quick]");
-    if (editArea) {
-      const item = state.quickItems.find((x) => x.id === editArea.getAttribute("data-edit-quick"));
+    if (Date.now() < suppressClickUntil) return;
+    const card = e.target.closest(".quick-item");
+    if (card) {
+      const item = state.quickItems.find((x) => x.id === card.getAttribute("data-id"));
       if (item) openEditNoteSheet("quick", null, item);
     }
   });
 
   els.viewNotes.addEventListener("click", (e) => {
-    if (dragState) return;
+    if (dragState || Date.now() < suppressClickUntil) return;
     const addStreamBtn = e.target.closest("[data-add-stream]");
     if (addStreamBtn) { openAddStreamSheet(addStreamBtn.getAttribute("data-add-stream")); return; }
     const selRow = e.target.closest("[data-select-stream]");
@@ -1432,13 +1519,6 @@
       localStorage.setItem("oq_active_stream", state.activeStreamId);
       vibrate(8);
       renderAll();
-      return;
-    }
-    const moveEntryBtn = e.target.closest("[data-move-entry]");
-    if (moveEntryBtn) {
-      const st = state.noteStreams.find((s) => s.id === moveEntryBtn.getAttribute("data-stream-id"));
-      const item = st ? st.items.find((x) => x.id === moveEntryBtn.getAttribute("data-move-entry")) : null;
-      if (st && item) openStreamItemMoveSheet(st, item);
       return;
     }
     const entryEl = e.target.closest(".note-entry");
