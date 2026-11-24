@@ -50,6 +50,7 @@
             android:exported="true"
             android:label="Lưu vào Obsidian Quick"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.ObsidianQuick.Sheet">
             <intent-filter>
@@ -59,18 +60,50 @@
             </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".QuickWidgetProvider"
+        <activity
+            android:name=".WidgetActionActivity"
             android:exported="true"
-            android:label="Obsidian Quick &amp; Task">
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.ObsidianQuick.TransparentAction" />
+
+        <!-- WIDGET 1: OBSIDIAN · QUICK NOTES -->
+        <receiver
+            android:name=".NotesWidgetProvider"
+            android:exported="true"
+            android:label="Obsidian · Quick Notes">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.nguyenhieu.quicknotes.ACTION_WIDGET_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/quick_widget_info" />
+                android:resource="@xml/widget_notes_info" />
         </receiver>
+
+        <service
+            android:name=".NotesWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- WIDGET 2: OBSIDIAN · QUICK TASK -->
+        <receiver
+            android:name=".TasksWidgetProvider"
+            android:exported="true"
+            android:label="Obsidian · Quick Task">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_tasks_info" />
+        </receiver>
+
+        <service
+            android:name=".TasksWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

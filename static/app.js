@@ -25,7 +25,9 @@
     chat: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     block: '<svg class="ic-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/></svg>',
     sun: '<svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
-    moon: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+    moon: '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>',
+    star: '<svg class="ic-sm" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    starFill: '<svg class="ic-sm star-svg-on" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="#FBBF24" stroke="#FBBF24"/></svg>'
   };
 
   const state = {
@@ -43,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.1.0",
+    appVersion: "1.2.0",
 
     quickItems: [],
     noteStreams: [],
@@ -137,8 +139,14 @@
   }
 
   function formatRichText(raw) {
-    const safe = escHtml(raw);
-    return safe.replace(/(#[\p{L}\p{N}_/-]+)/gu, '<span class="tag-pill">$1</span>');
+    let str = String(raw || "");
+    let starHtml = "";
+    if (/^★\s*/.test(str)) {
+      str = str.replace(/^★\s*/, "");
+      starHtml = '<span class="star-inline">' + ICONS.starFill + "</span>";
+    }
+    const safe = escHtml(str);
+    return starHtml + safe.replace(/(#[\p{L}\p{N}_/-]+)/gu, '<span class="tag-pill">$1</span>');
   }
 
   function applyTheme() {
@@ -650,7 +658,9 @@
     html += '<button class="sheet-row" data-move-to-task="focus" type="button"><span class="sheet-row-left">' + ICONS.task + '<span>Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button class="sheet-row" data-move-to-task="warehouse" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>Kho chờ Task</span></span>' + ICONS.arrowRight + "</button>";
 
+    const isStarred = /^★\s*/.test(item.text || "");
     html += '<div class="sheet-inline-actions">' +
+      '<button class="sheet-row" data-sheet-star-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + (isStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isStarred ? "Bỏ sao" : "Sao") + '</span></span></button>' +
       '<button class="sheet-row" data-sheet-edit-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + ICONS.edit + '<span>Sửa</span></span></button>' +
       '<button class="sheet-row danger" data-sheet-del-quick="' + escHtml(item.id) + '" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa</span></span></button>' +
     "</div>";
@@ -697,6 +707,12 @@
       });
     });
 
+    els.sheetContent.querySelector("[data-sheet-star-quick]").addEventListener("click", () => {
+      closeSheet();
+      item.text = /^★\s*/.test(item.text || "") ? item.text.replace(/^★\s*/, "") : ("★ " + (item.text || "").trim());
+      persistQuickNotes();
+      renderAll();
+    });
     els.sheetContent.querySelector("[data-sheet-edit-quick]").addEventListener("click", () => openEditNoteSheet("quick", null, item));
     els.sheetContent.querySelector("[data-sheet-del-quick]").addEventListener("click", () => {
       closeSheet();
@@ -759,7 +775,9 @@
     html += '<button class="sheet-row" data-note-move-task="focus" type="button"><span class="sheet-row-left">' + ICONS.task + '<span>Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button class="sheet-row" data-note-move-task="warehouse" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>Kho chờ Task</span></span>' + ICONS.arrowRight + "</button>";
 
+    const isItemStarred = /^★\s*/.test(item.text || "");
     html += '<div class="sheet-inline-actions">' +
+      '<button class="sheet-row" data-note-sheet-star="1" type="button"><span class="sheet-row-left">' + (isItemStarred ? ICONS.starFill : ICONS.star) + '<span>' + (isItemStarred ? "Bỏ sao" : "Sao") + '</span></span></button>' +
       '<button class="sheet-row" data-note-sheet-edit="1" type="button"><span class="sheet-row-left">' + ICONS.edit + '<span>Sửa</span></span></button>' +
       '<button class="sheet-row" data-note-sheet-copy="1" type="button"><span class="sheet-row-left">' + ICONS.copy + '<span>Chép</span></span></button>' +
       '<button class="sheet-row danger" data-note-sheet-del="1" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa</span></span></button>' +
@@ -827,6 +845,12 @@
       });
     });
 
+    els.sheetContent.querySelector("[data-note-sheet-star]").addEventListener("click", () => {
+      closeSheet();
+      item.text = /^★\s*/.test(item.text || "") ? item.text.replace(/^★\s*/, "") : ("★ " + (item.text || "").trim());
+      persistQuickNotes();
+      renderAll();
+    });
     els.sheetContent.querySelector("[data-note-sheet-edit]").addEventListener("click", () => {
       openEditNoteSheet("notes", sourceStream, item);
     });

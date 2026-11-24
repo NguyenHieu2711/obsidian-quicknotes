@@ -1270,3 +1270,15 @@ body.keyboard-open .bottom-bar {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
 }
+
+.star-inline {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 5px;
+}
+
+.star-inline svg {
+  width: 13.5px;
+  height: 13.5px;
+}
+

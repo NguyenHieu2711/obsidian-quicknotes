@@ -176,11 +176,17 @@ object VaultRepository {
     }
 
     fun getLatestVaultModifiedTimestamp(context: Context): Long {
-        val fsDir = getSavedVaultFsDir(context) ?: return 0L
+        val mDir = mirrorDir(context)
+        val m1 = File(mDir, REL_QUICK_NOTES).takeIf { it.exists() }?.lastModified() ?: 0L
+        val m2 = File(mDir, REL_DAILY_ANCHOR).takeIf { it.exists() }?.lastModified() ?: 0L
+        val m3 = File(mDir, REL_TASK_WAREHOUSE).takeIf { it.exists() }?.lastModified() ?: 0L
+        val mirrorMax = maxOf(m1, m2, m3)
+
+        val fsDir = getSavedVaultFsDir(context) ?: return mirrorMax
         val f1 = File(fsDir, REL_QUICK_NOTES).takeIf { it.exists() }?.lastModified() ?: 0L
         val f2 = File(fsDir, REL_DAILY_ANCHOR).takeIf { it.exists() }?.lastModified() ?: 0L
         val f3 = File(fsDir, REL_TASK_WAREHOUSE).takeIf { it.exists() }?.lastModified() ?: 0L
-        return maxOf(f1, f2, f3)
+        return maxOf(mirrorMax, f1, f2, f3)
     }
 
     private fun mergeSyncthingConflictsIfAny(vaultRoot: File) {
@@ -488,17 +494,6 @@ object VaultRepository {
     }
 
     fun notifyWidgets(context: Context) {
-        try {
-            val mgr = AppWidgetManager.getInstance(context)
-            val ids = mgr.getAppWidgetIds(ComponentName(context, QuickWidgetProvider::class.java))
-            if (ids.isNotEmpty()) {
-                val intent = Intent(context, QuickWidgetProvider::class.java).apply {
-                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
-                }
-                context.sendBroadcast(intent)
-            }
-        } catch (_: Exception) {
-        }
+        DualWidgetContract.refreshAllWidgets(context)
     }
 }
