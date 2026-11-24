@@ -1052,10 +1052,38 @@ body.keyboard-open .bottom-bar {
 }
 
 .sheet-title {
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 12px;
+  margin-bottom: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-ver {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.sheet-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sheet-grid-2 .sheet-row {
+  margin-bottom: 0;
+  justify-content: center;
+  padding: 10px 10px;
+}
+
+.sheet-one-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sheet-group-label {

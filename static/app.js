@@ -43,7 +43,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.7",
+    appVersion: "1.0.8",
 
     quickItems: [],
     noteStreams: [],
@@ -983,20 +983,25 @@
   }
 
   function openSettingsSheet() {
-    const statusText = state.vaultConnected ? "Đã kết nối: " + state.vaultLabel : "Chưa chọn thư mục Vault";
-    const nextThemeLabel = state.theme === "light" ? "Đổi sang tông Xám dịu (Soft Slate)" : "Đổi sang tông Trắng sáng (Clean Light)";
-    const nextModeLabel = state.notesDisplayMode === "chat" ? "Đổi kiểu Notes sang Thẻ Khối" : "Đổi kiểu Notes sang Bong bóng Chat";
+    const cleanVaultName = String(state.vaultLabel || "").replace(/^\.+/, "").trim();
+    const statusText = state.vaultConnected ? (cleanVaultName || "Vault đã nối") : "Chọn thư mục Vault";
+    const nextThemeLabel = state.theme === "light" ? "Nền tối" : "Nền sáng";
+    const nextModeLabel = state.notesDisplayMode === "chat" ? "Thẻ khối" : "Bong bóng";
     const nextModeIcon = state.notesDisplayMode === "chat" ? ICONS.block : ICONS.chat;
     openSheet(
-      '<div class="sheet-title">Tùy chọn (v' + escHtml(state.appVersion) + ")</div>" +
-      '<div class="sheet-group-label">Giao diện hiển thị</div>' +
-      '<button id="btnSwitchNotesModeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + nextModeIcon + "<span>" + nextModeLabel + "</span></span>" + ICONS.arrowRight + "</button>" +
-      '<button id="btnSwitchThemeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + (state.theme === "light" ? ICONS.moon : ICONS.sun) + "<span>" + nextThemeLabel + "</span></span>" + ICONS.arrowRight + "</button>" +
-      '<div class="sheet-group-label">Thư mục Obsidian Vault (Syncthing)</div>' +
-      '<button id="btnPickVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.folder + "<span>" + escHtml(statusText) + '</span></span><span style="color:var(--accent);font-weight:600;">Chọn thư mục</span></button>' +
-      '<div class="sheet-group-label">Cập nhật tự động từ GitHub (OTA)</div>' +
-      '<button id="btnCheckOtaSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Kiểm tra bản cập nhật mới</span></span>' + ICONS.arrowRight + "</button>" +
-      '<button id="btnReloadVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Đọc lại dữ liệu từ Syncthing</span></span>' + ICONS.arrowRight + "</button>"
+      '<div class="sheet-title"><span>Tùy chọn</span><span class="sheet-ver">v' + escHtml(state.appVersion) + "</span></div>" +
+      '<div class="sheet-grid-2">' +
+        '<button id="btnSwitchNotesModeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + nextModeIcon + "<span>" + nextModeLabel + "</span></span></button>" +
+        '<button id="btnSwitchThemeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + (state.theme === "light" ? ICONS.moon : ICONS.sun) + "<span>" + nextThemeLabel + "</span></span></button>" +
+      "</div>" +
+      '<button id="btnPickVaultSheet" class="sheet-row" style="margin-bottom:8px;" type="button">' +
+        '<span class="sheet-row-left" style="flex:1;"><span style="display:flex;">' + ICONS.folder + '</span><span class="sheet-one-line">' + escHtml(statusText) + '</span></span>' +
+        '<span style="color:var(--accent);font-weight:600;white-space:nowrap;">' + (state.vaultConnected ? "Đổi" : "Chọn") + "</span>" +
+      "</button>" +
+      '<div class="sheet-grid-2" style="margin-bottom:0;">' +
+        '<button id="btnCheckOtaSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Cập nhật</span></span></button>' +
+        '<button id="btnReloadVaultSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.refresh + '<span>Làm mới</span></span></button>' +
+      "</div>"
     );
 
     document.getElementById("btnSwitchNotesModeSheet").addEventListener("click", () => {
