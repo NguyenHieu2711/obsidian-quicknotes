@@ -97,12 +97,12 @@ svg.ic-xs { width: 13px; height: 13px; }
 svg.ic-tab { width: 17px; height: 17px; }
 svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
 
-/* Header (Compact for Nháp & Task; hidden on Notes) */
+/* Header (Slim & consistent across all 3 tabs: Ghi nhanh / Ghi chú / Trọng tâm hôm nay) */
 .top-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px 6px;
+  padding: 7px 14px 5px;
   background: var(--bg);
   flex-shrink: 0;
 }
@@ -393,7 +393,7 @@ svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding-top: 6px;
+  padding-top: 2px;
 }
 
 .pinned-2col-drawer {

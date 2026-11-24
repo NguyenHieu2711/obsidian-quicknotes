@@ -42,7 +42,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.5",
+    appVersion: "1.0.6",
 
     quickItems: [],
     noteStreams: [],
@@ -61,8 +61,6 @@
     hdrBadge: document.getElementById("hdrBadge"),
     btnSearchToggle: document.getElementById("btnSearchToggle"),
     btnSettings: document.getElementById("btnSettings"),
-    btnNotesSearch: document.getElementById("btnNotesSearch"),
-    btnNotesSettings: document.getElementById("btnNotesSettings"),
     searchBarWrap: document.getElementById("searchBarWrap"),
     searchInput: document.getElementById("searchInput"),
     btnSearchClear: document.getElementById("btnSearchClear"),
@@ -414,8 +412,7 @@
     els.badgeTask.textContent = doingCount;
     els.badgeTask.classList.toggle("hidden", doingCount === 0);
 
-    // Hide top header completely on Notes tab so Title lives directly inside the lower Note Block!
-    els.topHeader.classList.toggle("hidden", state.activeTab === "notes");
+    els.topHeader.classList.remove("hidden");
 
     if (state.activeTab === "quick") {
       els.hdrTitle.textContent = "Ghi nhanh";
@@ -424,6 +421,8 @@
       els.btnTaskTargetToggle.classList.add("hidden");
       els.composerInput.placeholder = "Tin nhắn";
     } else if (state.activeTab === "notes") {
+      els.hdrTitle.textContent = "Ghi chú";
+      els.hdrBadge.classList.add("hidden");
       els.btnTaskTargetToggle.classList.add("hidden");
       els.composerInput.placeholder = "Tin nhắn";
     } else {
@@ -1213,13 +1212,10 @@
   }
 
   els.btnSearchToggle.addEventListener("click", toggleSearchAction);
-  if (els.btnNotesSearch) els.btnNotesSearch.addEventListener("click", toggleSearchAction);
-
   els.searchInput.addEventListener("input", () => {
     state.searchQuery = els.searchInput.value.trim();
     renderAll();
   });
-
   els.btnSearchClear.addEventListener("click", () => {
     state.searchQuery = "";
     els.searchInput.value = "";
@@ -1227,9 +1223,7 @@
     els.searchBarWrap.classList.add("hidden");
     renderAll();
   });
-
   els.btnSettings.addEventListener("click", openSettingsSheet);
-  if (els.btnNotesSettings) els.btnNotesSettings.addEventListener("click", openSettingsSheet);
 
   els.btnConnectVault.addEventListener("click", () => {
     if (!hasNative) return;
