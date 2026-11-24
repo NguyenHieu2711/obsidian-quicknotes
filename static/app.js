@@ -5,6 +5,7 @@
 
   // Synchronized Flat Monoline SVG Icons (Lucide 1.85px stroke, zero colorful emojis!)
   const ICONS = {
+    zapSm: '<svg class="ic-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     dots: '<svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>',
     target: '<svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
     inbox: '<svg class="ic-sm" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
@@ -42,7 +43,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.6",
+    appVersion: "1.0.7",
 
     quickItems: [],
     noteStreams: [],
@@ -496,7 +497,10 @@
         : "";
       return (
         '<div class="note-entry" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
-          (it.time ? '<div class="ne-meta">' + escHtml(it.time) + "</div>" : "") +
+          '<div class="ne-meta">' +
+            '<span>' + escHtml(it.time || "") + '</span>' +
+            '<button class="ne-more-btn" data-move-entry="' + it.id + '" data-stream-id="' + curStream.id + '" type="button">' + ICONS.dots + '</button>' +
+          '</div>' +
           '<div class="ne-text">' + formatRichText(it.text) + "</div>" +
           subHtml +
         "</div>"
@@ -712,6 +716,120 @@
     persistWarehouseMd();
   }
 
+  function openStreamItemMoveSheet(sourceStream, item) {
+    if (!sourceStream || !item) return;
+    vibrate(10);
+
+    const otherActive = state.noteStreams.filter((s) => s.group === "active" && s.id !== sourceStream.id);
+    const otherArchive = state.noteStreams.filter((s) => s.group === "archive" && s.id !== sourceStream.id);
+
+    let html = '<div class="sheet-title">Đẩy mục này sang đâu?</div>';
+
+    if (otherActive.length > 0) {
+      html += '<div class="sheet-group-label">Đang giải quyết</div>';
+      for (const st of otherActive) {
+        html += '<button class="sheet-row" data-note-move-stream="' + escHtml(st.id) + '" type="button"><span class="sheet-row-left">' + ICONS.target + '<span>' + escHtml(st.title) + "</span></span>" + ICONS.arrowRight + "</button>";
+      }
+    }
+
+    if (otherArchive.length > 0) {
+      html += '<div class="sheet-group-label">Kho lưu trữ chung</div>';
+      for (const st of otherArchive) {
+        html += '<button class="sheet-row" data-note-move-stream="' + escHtml(st.id) + '" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>' + escHtml(st.title) + "</span></span>" + ICONS.arrowRight + "</button>";
+      }
+    }
+
+    html += '<div class="sheet-group-label">Chuyển sang Nháp hoặc Công việc</div>';
+    html += '<button class="sheet-row" data-note-move-quick="1" type="button"><span class="sheet-row-left">' + ICONS.zapSm + '<span>Đưa về khay Nháp nhanh</span></span>' + ICONS.arrowRight + "</button>";
+    html += '<button class="sheet-row" data-note-move-task="focus" type="button"><span class="sheet-row-left">' + ICONS.task + '<span>Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
+    html += '<button class="sheet-row" data-note-move-task="warehouse" type="button"><span class="sheet-row-left">' + ICONS.inbox + '<span>Kho chờ Task</span></span>' + ICONS.arrowRight + "</button>";
+
+    html += '<div class="sheet-inline-actions">' +
+      '<button class="sheet-row" data-note-sheet-edit="1" type="button"><span class="sheet-row-left">' + ICONS.edit + '<span>Sửa</span></span></button>' +
+      '<button class="sheet-row" data-note-sheet-copy="1" type="button"><span class="sheet-row-left">' + ICONS.copy + '<span>Chép</span></span></button>' +
+      '<button class="sheet-row danger" data-note-sheet-del="1" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa</span></span></button>' +
+    "</div>";
+
+    openSheet(html);
+
+    function vanishFromStreamAndRun(afterRemove) {
+      vibrate(14);
+      const domCard = els.notesStreamList.querySelector('.note-entry[data-entry-id="' + item.id + '"]');
+      if (domCard) domCard.classList.add("vanishing");
+      setTimeout(() => {
+        sourceStream.items = sourceStream.items.filter((x) => x.id !== item.id);
+        afterRemove();
+        renderAll();
+      }, 170);
+    }
+
+    els.sheetContent.querySelectorAll("[data-note-move-stream]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const targetSt = state.noteStreams.find((s) => s.id === btn.getAttribute("data-note-move-stream"));
+        if (!targetSt) return;
+        closeSheet();
+        vanishFromStreamAndRun(() => {
+          targetSt.items.push({ id: makeId("ni"), time: item.time || nowHHMM(), text: item.text, children: item.children || [] });
+          persistQuickNotes();
+          showToast("Đã chuyển sang " + targetSt.title);
+        });
+      });
+    });
+
+    els.sheetContent.querySelector("[data-note-move-quick]").addEventListener("click", () => {
+      closeSheet();
+      vanishFromStreamAndRun(() => {
+        state.quickItems.unshift({ id: makeId("ni"), time: item.time || nowHHMM(), text: item.text, children: item.children || [] });
+        persistQuickNotes();
+        showToast("Đã đưa về khay Nháp");
+      });
+    });
+
+    els.sheetContent.querySelectorAll("[data-note-move-task]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.getAttribute("data-note-move-task");
+        closeSheet();
+        vanishFromStreamAndRun(() => {
+          persistQuickNotes();
+          if (kind === "focus") {
+            state.focusTasks.unshift({
+              id: makeId("cf"),
+              text: item.text,
+              why: "",
+              status: "doing",
+              isCore: false,
+              notePath: null,
+              subLabel: "",
+              subTasks: (item.children || []).map((c) => ({ id: makeId("st"), text: c, done: false }))
+            });
+            persistDailyAnchor();
+            showToast("Đã chuyển vào Trọng tâm hôm nay");
+          } else {
+            insertIntoWarehouse(item.text);
+            showToast("Đã chuyển vào Kho chờ Task");
+          }
+        });
+      });
+    });
+
+    els.sheetContent.querySelector("[data-note-sheet-edit]").addEventListener("click", () => {
+      openEditNoteSheet("notes", sourceStream, item);
+    });
+    els.sheetContent.querySelector("[data-note-sheet-copy]").addEventListener("click", () => {
+      const full = [item.text].concat(item.children || []).join("\n- ");
+      if (hasNative) window.AndroidBridge.setClipboardText(full);
+      closeSheet();
+      showToast("Đã sao chép");
+    });
+    els.sheetContent.querySelector("[data-note-sheet-del]").addEventListener("click", () => {
+      closeSheet();
+      vanishFromStreamAndRun(() => {
+        persistQuickNotes();
+        showToast("Đã xóa mục");
+      });
+    });
+  }
+
   function openEditNoteSheet(scope, stream, item) {
     let html = '<div class="sheet-title">Chỉnh sửa nội dung</div>';
     html += '<textarea id="modalEditArea" class="modal-input" rows="3">' + escHtml(item.text) + "</textarea>";
@@ -724,6 +842,9 @@
     }
 
     html += '<button id="btnSaveNoteEdit" class="primary-btn" type="button">Lưu thay đổi</button>';
+    if (scope === "notes" && stream) {
+      html += '<button id="btnMoveFromEditSheet" class="sheet-row" style="margin-top:8px;" type="button"><span class="sheet-row-left">' + ICONS.arrowRight + '<span>Đẩy sang mạch khác / Task</span></span>' + ICONS.arrowRight + "</button>";
+    }
     html += '<div class="sheet-inline-actions">' +
       '<button id="btnCopyNoteText" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.copy + '<span>Sao chép</span></span></button>' +
       '<button id="btnDeleteNoteEntry" class="sheet-row danger" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa mục</span></span></button>' +
@@ -731,6 +852,10 @@
 
     openSheet(html);
     const area = document.getElementById("modalEditArea");
+    const moveFromEditBtn = document.getElementById("btnMoveFromEditSheet");
+    if (moveFromEditBtn) {
+      moveFromEditBtn.addEventListener("click", () => openStreamItemMoveSheet(stream, item));
+    }
 
     document.getElementById("btnSaveNoteEdit").addEventListener("click", () => {
       const val = area.value.trim();
@@ -1068,7 +1193,7 @@
     let startY = 0;
 
     container.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1) return;
+      if (e.touches.length !== 1 || e.target.closest("[data-move-entry]")) return;
       const card = e.target.closest(".note-entry");
       if (!card) return;
       startX = e.touches[0].clientX;
@@ -1260,6 +1385,13 @@
       localStorage.setItem("oq_active_stream", state.activeStreamId);
       vibrate(8);
       renderAll();
+      return;
+    }
+    const moveEntryBtn = e.target.closest("[data-move-entry]");
+    if (moveEntryBtn) {
+      const st = state.noteStreams.find((s) => s.id === moveEntryBtn.getAttribute("data-stream-id"));
+      const item = st ? st.items.find((x) => x.id === moveEntryBtn.getAttribute("data-move-entry")) : null;
+      if (st && item) openStreamItemMoveSheet(st, item);
       return;
     }
     const entryEl = e.target.closest(".note-entry");
