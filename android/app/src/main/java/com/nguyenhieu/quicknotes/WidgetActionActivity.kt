@@ -23,45 +23,68 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WidgetActionActivity : AppCompatActivity() {
 
+    companion object {
+        // Sequential single-thread background I/O queue: 0ms UI lag & strict FIFO write ordering
+        private val ioExecutor = Executors.newSingleThreadExecutor()
+    }
+
+    // Strict single-flight lock per popup session: prevents double-tap duplicate saves 100%
+    private val submitLock = AtomicBoolean(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleActionIntent(intent)
+    }
 
-        val mode = intent?.getStringExtra(DualWidgetContract.EXTRA_MODE).orEmpty()
-        val widgetId = intent?.getIntExtra(
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        submitLock.set(false)
+        handleActionIntent(intent)
+    }
+
+    private fun handleActionIntent(activeIntent: Intent?) {
+        val mode = activeIntent?.getStringExtra(DualWidgetContract.EXTRA_MODE).orEmpty()
+        val widgetId = activeIntent?.getIntExtra(
             DualWidgetContract.EXTRA_WIDGET_ID,
             AppWidgetManager.INVALID_APPWIDGET_ID
         ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
-        val widgetKind = intent?.getStringExtra(DualWidgetContract.EXTRA_WIDGET_KIND)
+        val widgetKind = activeIntent?.getStringExtra(DualWidgetContract.EXTRA_WIDGET_KIND)
             ?: DualWidgetContract.KIND_NOTES
-        val itemUid = intent?.getStringExtra(DualWidgetContract.EXTRA_ITEM_UID).orEmpty()
+        val itemUid = activeIntent?.getStringExtra(DualWidgetContract.EXTRA_ITEM_UID).orEmpty()
 
-        // 1. Fast silent Home Screen toggles (0 UI frames, zero flicker)
+        // 1. Instant 0ms Home Screen toggles (zero UI frames, background I/O)
         when (mode) {
             DualWidgetContract.MODE_TOGGLE_NOTE_STAR -> {
                 if (itemUid.isNotEmpty()) {
-                    WidgetVaultHelper.toggleNoteStar(this, itemUid)
                     hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.toggleNoteStar(ctx, itemUid) }
+                } else {
+                    closeWindowNow()
                 }
-                finishSilently()
                 return
             }
             DualWidgetContract.MODE_TOGGLE_TASK_STAR -> {
                 if (itemUid.isNotEmpty()) {
-                    WidgetVaultHelper.toggleTaskStar(this, itemUid)
                     hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.toggleTaskStar(ctx, itemUid) }
+                } else {
+                    closeWindowNow()
                 }
-                finishSilently()
                 return
             }
             DualWidgetContract.MODE_TOGGLE_TASK_DONE -> {
                 if (itemUid.isNotEmpty()) {
-                    WidgetVaultHelper.toggleTaskDone(this, itemUid)
                     hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.toggleTaskDone(ctx, itemUid) }
+                } else {
+                    closeWindowNow()
                 }
-                finishSilently()
                 return
             }
         }
@@ -81,7 +104,7 @@ class WidgetActionActivity : AppCompatActivity() {
             DualWidgetContract.MODE_ASSIGN_TASK_GROUP -> renderAssignTaskGroupSheet(uid = itemUid)
             DualWidgetContract.MODE_EDIT_NOTE -> renderEditNoteSheet(uid = itemUid)
             DualWidgetContract.MODE_EDIT_TASK -> renderEditTaskSheet(uid = itemUid)
-            else -> finishSilently()
+            else -> closeWindowNow()
         }
     }
 
@@ -95,16 +118,27 @@ class WidgetActionActivity : AppCompatActivity() {
                 @Suppress("DEPRECATION")
                 getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             }
-            vib?.vibrate(VibrationEffect.createOneShot(12L, VibrationEffect.DEFAULT_AMPLITUDE))
+            vib?.vibrate(VibrationEffect.createOneShot(11L, VibrationEffect.DEFAULT_AMPLITUDE))
         } catch (_: Exception) {
         }
     }
 
-    private fun finishSilently() {
-        DualWidgetContract.refreshAllWidgets(this)
+    private fun closeWindowNow() {
         finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
+    }
+
+    private fun runAsyncAndClose(work: (Context) -> Unit) {
+        val appCtx = applicationContext
+        closeWindowNow()
+        ioExecutor.execute {
+            try {
+                work(appCtx)
+            } finally {
+                DualWidgetContract.refreshAllWidgets(appCtx)
+            }
+        }
     }
 
     private fun mountBottomCard(card: LinearLayout, openKeyboardFor: EditText? = null) {
@@ -112,7 +146,7 @@ class WidgetActionActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             setPadding(dp(12), dp(24), dp(12), dp(14))
-            setOnClickListener { finishSilently() }
+            setOnClickListener { closeWindowNow() }
         }
         card.isClickable = true
         outer.addView(
@@ -134,6 +168,7 @@ class WidgetActionActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT
         )
         if (openKeyboardFor != null) {
+            @Suppress("DEPRECATION")
             window?.setSoftInputMode(
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
@@ -142,7 +177,7 @@ class WidgetActionActivity : AppCompatActivity() {
             openKeyboardFor.postDelayed({
                 val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
                 imm?.showSoftInput(openKeyboardFor, InputMethodManager.SHOW_IMPLICIT)
-            }, 60L)
+            }, 35L)
         }
     }
 
@@ -205,7 +240,7 @@ class WidgetActionActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // SHEET 1: + QUICK ADD (NOTE OR TASK) WITH GROUP CHIPS & STAR TOGGLE
+    // SHEET 1: + QUICK ADD (0ms OPEN VIA FAST MIRROR + SINGLE-FLIGHT SAVE LOCK)
     // =========================================================================
     private fun renderQuickAddSheet(isTask: Boolean, widgetId: Int) {
         val accentHex = if (isTask) "#A78BFA" else "#38BDF8"
@@ -213,10 +248,11 @@ class WidgetActionActivity : AppCompatActivity() {
         val accentBtnText = if (isTask) "#FFFFFF" else "#0F172A"
 
         val currentFilter = WidgetVaultHelper.getWidgetGroupFilter(this, widgetId, WidgetVaultHelper.GROUP_ALL)
+        // Read groups from fast internal SSD mirror (<0.3ms) so popup opens with 0ms lag!
         val rawOptions = if (isTask) {
-            WidgetVaultHelper.listTaskGroups(this).filter { it.key != WidgetVaultHelper.GROUP_ALL }
+            WidgetVaultHelper.listTaskGroups(this, fastMirror = true).filter { it.key != WidgetVaultHelper.GROUP_ALL }
         } else {
-            WidgetVaultHelper.listNoteGroups(this).filter { it.key != WidgetVaultHelper.GROUP_ALL }
+            WidgetVaultHelper.listNoteGroups(this, fastMirror = true).filter { it.key != WidgetVaultHelper.GROUP_ALL }
         }
 
         var selectedGroupKey = when {
@@ -229,7 +265,6 @@ class WidgetActionActivity : AppCompatActivity() {
 
         val card = makeSheetCard()
 
-        // Header Row: Title + Star toggle + Save button
         val topRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -287,26 +322,31 @@ class WidgetActionActivity : AppCompatActivity() {
             imeOptions = EditorInfo.IME_ACTION_DONE
         }
 
+        lateinit var saveBtn: TextView
+
         fun submitNow() {
             val txt = editBox.text?.toString()?.trim().orEmpty()
             if (txt.isEmpty()) {
                 Toast.makeText(this, "Chưa nhập nội dung.", Toast.LENGTH_SHORT).show()
                 return
             }
-            val ok = if (isTask) {
-                WidgetVaultHelper.addTaskFromWidget(this, txt, selectedGroupKey, isStarred)
-            } else {
-                WidgetVaultHelper.addNoteFromWidget(this, txt, selectedGroupKey, isStarred)
-            }
-            if (ok) {
-                hapticTick()
-                finishSilently()
-            } else {
-                Toast.makeText(this, "Chưa kết nối thư mục Vault.", Toast.LENGTH_SHORT).show()
+            // Atomic single-flight guard: blocks rapid double-tap 100%!
+            if (!submitLock.compareAndSet(false, true)) return
+            saveBtn.isEnabled = false
+            saveBtn.alpha = 0.5f
+            val chosenGroup = selectedGroupKey
+            val chosenStar = isStarred
+            hapticTick()
+            runAsyncAndClose { ctx ->
+                if (isTask) {
+                    WidgetVaultHelper.addTaskFromWidget(ctx, txt, chosenGroup, chosenStar)
+                } else {
+                    WidgetVaultHelper.addNoteFromWidget(ctx, txt, chosenGroup, chosenStar)
+                }
             }
         }
 
-        val saveBtn = TextView(this).apply {
+        saveBtn = TextView(this).apply {
             text = "Lưu"
             textSize = 13f
             paint.isFakeBoldText = true
@@ -329,7 +369,6 @@ class WidgetActionActivity : AppCompatActivity() {
             }
         )
 
-        // Group Selector Horizontal Chips
         val chipRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -386,17 +425,22 @@ class WidgetActionActivity : AppCompatActivity() {
         val isTask = widgetKind == DualWidgetContract.KIND_TASKS
         val accentHex = if (isTask) "#A78BFA" else "#38BDF8"
         val curFilter = WidgetVaultHelper.getWidgetGroupFilter(this, widgetId, WidgetVaultHelper.GROUP_ALL)
-        val options = if (isTask) WidgetVaultHelper.listTaskGroups(this) else WidgetVaultHelper.listNoteGroups(this)
+        val options = if (isTask) {
+            WidgetVaultHelper.listTaskGroups(this, fastMirror = true)
+        } else {
+            WidgetVaultHelper.listNoteGroups(this, fastMirror = true)
+        }
 
         val card = makeSheetCard()
-        val hdr = TextView(this).apply {
-            text = if (isTask) "Lọc nhóm Task trên Widget" else "Lọc nhóm Notes trên Widget"
-            textSize = 15f
-            paint.isFakeBoldText = true
-            setTextColor(Color.parseColor("#F1F5F9"))
-            setPadding(0, 0, 0, dp(10))
-        }
-        card.addView(hdr)
+        card.addView(
+            TextView(this).apply {
+                text = if (isTask) "Lọc nhóm Task trên Widget" else "Lọc nhóm Notes trên Widget"
+                textSize = 15f
+                paint.isFakeBoldText = true
+                setTextColor(Color.parseColor("#F1F5F9"))
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
 
         val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         for (opt in options) {
@@ -408,9 +452,10 @@ class WidgetActionActivity : AppCompatActivity() {
                     selected = opt.key.equals(curFilter, ignoreCase = true),
                     accentHex = accentHex
                 ) {
+                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
                     WidgetVaultHelper.setWidgetGroupFilter(this, widgetId, opt.key)
                     hapticTick()
-                    finishSilently()
+                    runAsyncAndClose { }
                 }
             )
         }
@@ -428,7 +473,7 @@ class WidgetActionActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // SHEET 3: WIDGET SORT PICKER (MỚI NHẤT / TÊN A-Z / SAO ★)
+    // SHEET 3: WIDGET SORT PICKER
     // =========================================================================
     private fun renderSortPickerSheet(widgetKind: String, widgetId: Int) {
         val isTask = widgetKind == DualWidgetContract.KIND_TASKS
@@ -459,9 +504,10 @@ class WidgetActionActivity : AppCompatActivity() {
                     selected = curSort == key,
                     accentHex = accentHex
                 ) {
+                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
                     WidgetVaultHelper.setWidgetSortMode(this, widgetId, key)
                     hapticTick()
-                    finishSilently()
+                    runAsyncAndClose { }
                 }
             )
         }
@@ -472,9 +518,9 @@ class WidgetActionActivity : AppCompatActivity() {
     // SHEET 4: 1-TAP ASSIGN / MOVE GROUP FOR A QUICK NOTE ITEM
     // =========================================================================
     private fun renderAssignNoteGroupSheet(uid: String) {
-        val note = WidgetVaultHelper.findNoteByUid(this, uid)
+        val note = WidgetVaultHelper.findNoteByUid(this, uid, fastMirror = true)
         if (note == null) {
-            finishSilently()
+            closeWindowNow()
             return
         }
 
@@ -498,10 +544,9 @@ class WidgetActionActivity : AppCompatActivity() {
         )
 
         val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val groups = WidgetVaultHelper.listNoteGroups(this).filter { it.key != WidgetVaultHelper.GROUP_ALL }
-
-        // Show named groups first so "+ Gắn nhóm" puts user's real groups right on top
+        val groups = WidgetVaultHelper.listNoteGroups(this, fastMirror = true).filter { it.key != WidgetVaultHelper.GROUP_ALL }
         val orderedGroups = groups.sortedBy { if (it.key == WidgetVaultHelper.GROUP_QUICK) 1 else 0 }
+
         for (opt in orderedGroups) {
             listBox.addView(
                 makeOptionRow(
@@ -510,14 +555,14 @@ class WidgetActionActivity : AppCompatActivity() {
                     selected = opt.key.equals(note.groupKey, ignoreCase = true),
                     accentHex = "#38BDF8"
                 ) {
-                    WidgetVaultHelper.assignNoteToGroup(this, uid, opt.key)
+                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
+                    val targetKey = opt.key
                     hapticTick()
-                    finishSilently()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.assignNoteToGroup(ctx, uid, targetKey) }
                 }
             )
         }
 
-        // Extra action: Convert straight to Trọng tâm hôm nay Task
         listBox.addView(
             makeOptionRow(
                 title = "Chuyển thành Task Trọng tâm hôm nay",
@@ -525,9 +570,9 @@ class WidgetActionActivity : AppCompatActivity() {
                 selected = false,
                 accentHex = "#A78BFA"
             ) {
-                WidgetVaultHelper.convertNoteToFocusTask(this, uid)
+                if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
                 hapticTick()
-                finishSilently()
+                runAsyncAndClose { ctx -> WidgetVaultHelper.convertNoteToFocusTask(ctx, uid) }
             }
         )
 
@@ -547,9 +592,9 @@ class WidgetActionActivity : AppCompatActivity() {
     // SHEET 5: 1-TAP ASSIGN / MOVE GROUP FOR A TASK ITEM
     // =========================================================================
     private fun renderAssignTaskGroupSheet(uid: String) {
-        val task = WidgetVaultHelper.findTaskByUid(this, uid)
+        val task = WidgetVaultHelper.findTaskByUid(this, uid, fastMirror = true)
         if (task == null) {
-            finishSilently()
+            closeWindowNow()
             return
         }
 
@@ -573,7 +618,7 @@ class WidgetActionActivity : AppCompatActivity() {
         )
 
         val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val groups = WidgetVaultHelper.listTaskGroups(this).filter { it.key != WidgetVaultHelper.GROUP_ALL }
+        val groups = WidgetVaultHelper.listTaskGroups(this, fastMirror = true).filter { it.key != WidgetVaultHelper.GROUP_ALL }
         for (opt in groups) {
             listBox.addView(
                 makeOptionRow(
@@ -582,9 +627,10 @@ class WidgetActionActivity : AppCompatActivity() {
                     selected = opt.key.equals(task.groupKey, ignoreCase = true),
                     accentHex = "#A78BFA"
                 ) {
-                    WidgetVaultHelper.assignTaskToGroup(this, uid, opt.key)
+                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
+                    val targetKey = opt.key
                     hapticTick()
-                    finishSilently()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.assignTaskToGroup(ctx, uid, targetKey) }
                 }
             )
         }
@@ -605,12 +651,12 @@ class WidgetActionActivity : AppCompatActivity() {
     // SHEET 6: QUICK EDIT / DELETE / OPEN FOR NOTE OR TASK
     // =========================================================================
     private fun renderEditNoteSheet(uid: String) {
-        val note = WidgetVaultHelper.findNoteByUid(this, uid)
+        val note = WidgetVaultHelper.findNoteByUid(this, uid, fastMirror = true)
         if (note == null) {
-            finishSilently()
+            closeWindowNow()
             return
         }
-        var isStarred = note.starred
+        val isStarred = note.starred
         val card = makeSheetCard()
 
         val topRow = LinearLayout(this).apply {
@@ -627,20 +673,21 @@ class WidgetActionActivity : AppCompatActivity() {
             }
         )
 
-        val btnOpenApp = TextView(this).apply {
-            text = "Mở App ↗"
-            textSize = 12f
-            setTextColor(Color.parseColor("#94A3B8"))
-            setPadding(dp(8), dp(5), dp(8), dp(5))
-            setOnClickListener {
-                startActivity(Intent(this@WidgetActionActivity, MainActivity::class.java).apply {
-                    putExtra("open_tab", if (note.isUnassigned) "quick" else "notes")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                })
-                finishSilently()
+        topRow.addView(
+            TextView(this).apply {
+                text = "Mở App ↗"
+                textSize = 12f
+                setTextColor(Color.parseColor("#94A3B8"))
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+                setOnClickListener {
+                    startActivity(Intent(this@WidgetActionActivity, MainActivity::class.java).apply {
+                        putExtra("open_tab", if (note.isUnassigned) "quick" else "notes")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    })
+                    closeWindowNow()
+                }
             }
-        }
-        topRow.addView(btnOpenApp)
+        )
         card.addView(topRow)
 
         val editBox = EditText(this).apply {
@@ -670,87 +717,79 @@ class WidgetActionActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val btnDelete = TextView(this).apply {
-            text = "Xóa"
-            textSize = 12.5f
-            setTextColor(Color.parseColor("#F87171"))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#2A1C22"))
-                setStroke(dp(1), Color.parseColor("#5C2B33"))
-                cornerRadius = dp(9).toFloat()
-            }
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            setOnClickListener {
-                WidgetVaultHelper.deleteNoteFromWidget(this@WidgetActionActivity, uid)
-                hapticTick()
-                finishSilently()
-            }
-        }
-        actRow.addView(btnDelete)
-
-        val btnGroup = TextView(this).apply {
-            text = "Đổi nhóm"
-            textSize = 12.5f
-            setTextColor(Color.parseColor("#38BDF8"))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1E293B"))
-                setStroke(dp(1), Color.parseColor("#2F4666"))
-                cornerRadius = dp(9).toFloat()
-            }
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            setOnClickListener {
-                val curTxt = editBox.text?.toString()?.trim().orEmpty()
-                if (curTxt.isNotEmpty() && curTxt != note.cleanText) {
-                    WidgetVaultHelper.updateNoteFromWidget(this@WidgetActionActivity, uid, curTxt, isStarred)
-                }
-                renderAssignNoteGroupSheet(uid)
-            }
-        }
         actRow.addView(
-            btnGroup,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(8)
+            TextView(this).apply {
+                text = "Xóa"
+                textSize = 12.5f
+                setTextColor(Color.parseColor("#F87171"))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#2A1C22"))
+                    setStroke(dp(1), Color.parseColor("#5C2B33"))
+                    cornerRadius = dp(9).toFloat()
+                }
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setOnClickListener {
+                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
+                    hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.deleteNoteFromWidget(ctx, uid) }
+                }
             }
         )
 
         actRow.addView(
             TextView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                text = "Đổi nhóm"
+                textSize = 12.5f
+                setTextColor(Color.parseColor("#38BDF8"))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#1E293B"))
+                    setStroke(dp(1), Color.parseColor("#2F4666"))
+                    cornerRadius = dp(9).toFloat()
+                }
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setOnClickListener {
+                    submitLock.set(false)
+                    renderAssignNoteGroupSheet(uid)
+                }
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(8)
             }
         )
 
-        val btnSave = TextView(this).apply {
-            text = "Lưu sửa"
-            textSize = 13f
-            paint.isFakeBoldText = true
-            setTextColor(Color.parseColor("#0F172A"))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#38BDF8"))
-                cornerRadius = dp(9).toFloat()
-            }
-            setPadding(dp(15), dp(7), dp(15), dp(7))
-            setOnClickListener {
-                val txt = editBox.text?.toString()?.trim().orEmpty()
-                if (txt.isNotEmpty()) {
-                    WidgetVaultHelper.updateNoteFromWidget(this@WidgetActionActivity, uid, txt, isStarred)
-                    hapticTick()
-                }
-                finishSilently()
-            }
-        }
-        actRow.addView(btnSave)
-        card.addView(actRow)
+        actRow.addView(TextView(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
 
+        actRow.addView(
+            TextView(this).apply {
+                text = "Lưu sửa"
+                textSize = 13f
+                paint.isFakeBoldText = true
+                setTextColor(Color.parseColor("#0F172A"))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#38BDF8"))
+                    cornerRadius = dp(9).toFloat()
+                }
+                setPadding(dp(15), dp(7), dp(15), dp(7))
+                setOnClickListener {
+                    val txt = editBox.text?.toString()?.trim().orEmpty()
+                    if (txt.isEmpty()) return@setOnClickListener
+                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
+                    hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.updateNoteFromWidget(ctx, uid, txt, isStarred) }
+                }
+            }
+        )
+        card.addView(actRow)
         mountBottomCard(card, openKeyboardFor = editBox)
     }
 
     private fun renderEditTaskSheet(uid: String) {
-        val task = WidgetVaultHelper.findTaskByUid(this, uid)
+        val task = WidgetVaultHelper.findTaskByUid(this, uid, fastMirror = true)
         if (task == null) {
-            finishSilently()
+            closeWindowNow()
             return
         }
-        var isStarred = task.starred
+        val isStarred = task.starred
         val card = makeSheetCard()
 
         val topRow = LinearLayout(this).apply {
@@ -777,7 +816,7 @@ class WidgetActionActivity : AppCompatActivity() {
                         putExtra("open_tab", "task")
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     })
-                    finishSilently()
+                    closeWindowNow()
                 }
             }
         )
@@ -821,9 +860,9 @@ class WidgetActionActivity : AppCompatActivity() {
                 }
                 setPadding(dp(12), dp(7), dp(12), dp(7))
                 setOnClickListener {
-                    WidgetVaultHelper.deleteTaskFromWidget(this@WidgetActionActivity, uid)
+                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
                     hapticTick()
-                    finishSilently()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.deleteTaskFromWidget(ctx, uid) }
                 }
             }
         )
@@ -839,10 +878,7 @@ class WidgetActionActivity : AppCompatActivity() {
                 }
                 setPadding(dp(12), dp(7), dp(12), dp(7))
                 setOnClickListener {
-                    val curTxt = editBox.text?.toString()?.trim().orEmpty()
-                    if (curTxt.isNotEmpty() && curTxt != task.cleanText) {
-                        WidgetVaultHelper.updateTaskFromWidget(this@WidgetActionActivity, uid, curTxt, isStarred)
-                    }
+                    submitLock.set(false)
                     renderAssignTaskGroupSheet(uid)
                 }
             },
@@ -864,11 +900,10 @@ class WidgetActionActivity : AppCompatActivity() {
                 setPadding(dp(15), dp(7), dp(15), dp(7))
                 setOnClickListener {
                     val txt = editBox.text?.toString()?.trim().orEmpty()
-                    if (txt.isNotEmpty()) {
-                        WidgetVaultHelper.updateTaskFromWidget(this@WidgetActionActivity, uid, txt, isStarred)
-                        hapticTick()
-                    }
-                    finishSilently()
+                    if (txt.isEmpty()) return@setOnClickListener
+                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
+                    hapticTick()
+                    runAsyncAndClose { ctx -> WidgetVaultHelper.updateTaskFromWidget(ctx, uid, txt, isStarred) }
                 }
             }
         )

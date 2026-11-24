@@ -253,8 +253,9 @@ object WidgetVaultHelper {
     // =========================================================================
     // NOTES PUBLIC API FOR WIDGET
     // =========================================================================
-    fun listNoteGroups(context: Context): List<GroupOption> {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+    fun listNoteGroups(context: Context, fastMirror: Boolean = false): List<GroupOption> {
+        val md = if (fastMirror) VaultRepository.readQuickNotesMdFast(context) else VaultRepository.readQuickNotesMd(context)
+        val doc = parseNotesDoc(md)
         val total = doc.quickItems.size + doc.streams.sumOf { it.items.size }
         val out = mutableListOf<GroupOption>()
         out.add(GroupOption(GROUP_ALL, "Tất cả nhóm", "", total))
@@ -274,8 +275,9 @@ object WidgetVaultHelper {
         }
     }
 
-    fun loadNotesForWidget(context: Context, groupFilter: String, sortMode: String): List<NoteWidgetItem> {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+    fun loadNotesForWidget(context: Context, groupFilter: String, sortMode: String, fastMirror: Boolean = false): List<NoteWidgetItem> {
+        val md = if (fastMirror) VaultRepository.readQuickNotesMdFast(context) else VaultRepository.readQuickNotesMd(context)
+        val doc = parseNotesDoc(md)
         val all = mutableListOf<NoteWidgetItem>()
         var rank = 10000
 
@@ -442,8 +444,8 @@ object WidgetVaultHelper {
         return VaultRepository.saveQuickNotesMd(context, serializeNotesDoc(doc))
     }
 
-    fun findNoteByUid(context: Context, uid: String): NoteWidgetItem? {
-        return loadNotesForWidget(context, GROUP_ALL, SORT_NEWEST).find { it.uid == uid }
+    fun findNoteByUid(context: Context, uid: String, fastMirror: Boolean = false): NoteWidgetItem? {
+        return loadNotesForWidget(context, GROUP_ALL, SORT_NEWEST, fastMirror).find { it.uid == uid }
     }
 
     // =========================================================================
@@ -484,8 +486,8 @@ object WidgetVaultHelper {
         return sections
     }
 
-    fun listTaskGroups(context: Context): List<GroupOption> {
-        val rawAnchor = VaultRepository.readDailyAnchorJson(context)
+    fun listTaskGroups(context: Context, fastMirror: Boolean = false): List<GroupOption> {
+        val rawAnchor = if (fastMirror) VaultRepository.readDailyAnchorJsonFast(context) else VaultRepository.readDailyAnchorJson(context)
         var focusCount = 0
         try {
             val arr = JSONObject(rawAnchor).optJSONArray("customTasks")
@@ -493,7 +495,8 @@ object WidgetVaultHelper {
         } catch (_: Exception) {
         }
 
-        val whLines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n")
+        val whMd = if (fastMirror) VaultRepository.readTaskWarehouseMdFast(context) else VaultRepository.readTaskWarehouseMd(context)
+        val whLines = whMd.replace("\r\n", "\n").split("\n")
         val sections = scanWarehouseSections(whLines)
         val countsByKey = mutableMapOf<String, Int>()
         var currentKey = sections.firstOrNull()?.key ?: "WH:Hộp tiếp nhận"
@@ -533,13 +536,13 @@ object WidgetVaultHelper {
         }
     }
 
-    fun loadTasksForWidget(context: Context, groupFilter: String, sortMode: String): List<TaskWidgetItem> {
+    fun loadTasksForWidget(context: Context, groupFilter: String, sortMode: String, fastMirror: Boolean = false): List<TaskWidgetItem> {
         val all = mutableListOf<TaskWidgetItem>()
         var rank = 20000
 
         // 1. Focus Tasks (daily-focus-anchor.json)
         try {
-            val rawAnchor = VaultRepository.readDailyAnchorJson(context)
+            val rawAnchor = if (fastMirror) VaultRepository.readDailyAnchorJsonFast(context) else VaultRepository.readDailyAnchorJson(context)
             val arr = JSONObject(rawAnchor).optJSONArray("customTasks")
             if (arr != null) {
                 val len = arr.length()
@@ -568,7 +571,8 @@ object WidgetVaultHelper {
         }
 
         // 2. Warehouse Tasks (✅ Nhà kho chứa Task.md)
-        val whLines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n")
+        val whMd = if (fastMirror) VaultRepository.readTaskWarehouseMdFast(context) else VaultRepository.readTaskWarehouseMd(context)
+        val whLines = whMd.replace("\r\n", "\n").split("\n")
         val sections = scanWarehouseSections(whLines)
         var curKey = sections.firstOrNull()?.key ?: "WH:Hộp tiếp nhận"
         var curLabel = sections.firstOrNull()?.cleanLabel ?: "Hộp tiếp nhận"
@@ -834,7 +838,7 @@ object WidgetVaultHelper {
         return false
     }
 
-    fun findTaskByUid(context: Context, uid: String): TaskWidgetItem? {
-        return loadTasksForWidget(context, GROUP_ALL, SORT_NEWEST).find { it.uid == uid }
+    fun findTaskByUid(context: Context, uid: String, fastMirror: Boolean = false): TaskWidgetItem? {
+        return loadTasksForWidget(context, GROUP_ALL, SORT_NEWEST, fastMirror).find { it.uid == uid }
     }
 }

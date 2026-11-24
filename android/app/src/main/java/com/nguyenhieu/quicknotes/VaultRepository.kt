@@ -139,7 +139,11 @@ object VaultRepository {
 
     fun saveSafTreeUri(context: Context, treeUri: Uri) {
         val resolvedFs = resolveTreeUriToFilePath(treeUri)
-        val edit = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val edit = prefs.edit()
+        for (k in prefs.all.keys) {
+            if (k.startsWith("saf_doc_uri_")) edit.remove(k)
+        }
         edit.putString(KEY_VAULT_SAF_URI, treeUri.toString())
         if (resolvedFs != null && File(resolvedFs).isDirectory && hasAllFilesAccess()) {
             edit.putString(KEY_VAULT_PATH, resolvedFs)
@@ -240,6 +244,58 @@ object VaultRepository {
         }
     }
 
+    private fun getRawSavedSafTreeUri(context: Context): Uri? {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_VAULT_SAF_URI, "")?.trim().orEmpty()
+        return if (raw.isNotEmpty()) try { Uri.parse(raw) } catch (_: Exception) { null } else null
+    }
+
+    private fun resolveDirectSafDocUri(context: Context, treeUri: Uri, relPath: String): Uri? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cacheKey = "saf_doc_uri_$relPath"
+        val cached = prefs.getString(cacheKey, "")?.trim().orEmpty()
+        if (cached.isNotEmpty()) {
+            return try { Uri.parse(cached) } catch (_: Exception) { null }
+        }
+        return try {
+            val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+            val cleanRel = relPath.trim('/')
+            val childDocId = if (rootDocId.endsWith(":") || rootDocId.endsWith("/")) {
+                "$rootDocId$cleanRel"
+            } else {
+                "$rootDocId/$cleanRel"
+            }
+            DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun cacheSafDocUri(context: Context, relPath: String, docUri: Uri) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("saf_doc_uri_$relPath", docUri.toString())
+            .apply()
+    }
+
+    private fun syncMirrorQuietly(context: Context, relPath: String, content: String) {
+        try {
+            val mf = File(mirrorDir(context), relPath)
+            if (!mf.exists() || mf.length() != content.toByteArray(Charsets.UTF_8).size.toLong()) {
+                atomicWriteFs(mf, content)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun readRelFileFastMirror(context: Context, relPath: String, fallbackContent: String): String {
+        val mf = File(mirrorDir(context), relPath)
+        if (mf.exists() && mf.isFile) {
+            return try { mf.readText(Charsets.UTF_8) } catch (_: Exception) { fallbackContent }
+        }
+        return readRelFile(context, relPath, fallbackContent)
+    }
+
     private fun readRelFile(context: Context, relPath: String, fallbackContent: String): String {
         val fsDir = getSavedVaultFsDir(context) ?: tryAutoDetectVaultFolder(context)
         if (fsDir != null) {
@@ -249,12 +305,13 @@ object VaultRepository {
             val f = File(fsDir, relPath)
             if (f.exists() && f.isFile) {
                 return try {
-                    f.readText(Charsets.UTF_8)
+                    val txt = f.readText(Charsets.UTF_8)
+                    syncMirrorQuietly(context, relPath, txt)
+                    txt
                 } catch (_: Exception) {
                     fallbackContent
                 }
             }
-            // Seed from mirror if user captured notes before linking Vault
             val mirror = File(mirrorDir(context), relPath)
             if (mirror.exists() && relPath == REL_QUICK_NOTES) {
                 val mText = mirror.readText(Charsets.UTF_8)
@@ -264,15 +321,34 @@ object VaultRepository {
             return fallbackContent
         }
 
-        val safRoot = getSavedSafTree(context)
-        if (safRoot != null) {
-            val doc = findSafFile(safRoot, relPath, createIfMissing = false)
-            if (doc != null) {
-                return try {
-                    context.contentResolver.openInputStream(doc.uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                        ?: fallbackContent
+        val treeUri = getRawSavedSafTreeUri(context)
+        if (treeUri != null) {
+            // Fast O(1) direct URI read (skips slow DocumentFile directory scan!)
+            val directUri = resolveDirectSafDocUri(context, treeUri, relPath)
+            if (directUri != null) {
+                try {
+                    val text = context.contentResolver.openInputStream(directUri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    if (text != null) {
+                        syncMirrorQuietly(context, relPath, text)
+                        return text
+                    }
                 } catch (_: Exception) {
-                    fallbackContent
+                }
+            }
+            // Fallback once if file path wasn't direct-mapped yet
+            val safRoot = getSavedSafTree(context)
+            if (safRoot != null) {
+                val doc = findSafFile(safRoot, relPath, createIfMissing = false)
+                if (doc != null) {
+                    cacheSafDocUri(context, relPath, doc.uri)
+                    return try {
+                        val txt = context.contentResolver.openInputStream(doc.uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                            ?: fallbackContent
+                        syncMirrorQuietly(context, relPath, txt)
+                        txt
+                    } catch (_: Exception) {
+                        fallbackContent
+                    }
                 }
             }
             return fallbackContent
@@ -291,7 +367,7 @@ object VaultRepository {
     }
 
     private fun writeRelFile(context: Context, relPath: String, content: String): Boolean {
-        // Always update mirror too for instant Widget / offline resilience
+        // Always update mirror first (<0.3ms internal SSD) for instant Widget & UI reads
         try {
             atomicWriteFs(File(mirrorDir(context), relPath), content)
         } catch (_: Exception) {
@@ -308,17 +384,35 @@ object VaultRepository {
             }
         }
 
-        val safRoot = getSavedSafTree(context)
-        if (safRoot != null) {
-            return try {
-                val doc = findSafFile(safRoot, relPath, createIfMissing = true) ?: return false
-                context.contentResolver.openOutputStream(doc.uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-                    it.write(content)
+        val treeUri = getRawSavedSafTreeUri(context)
+        if (treeUri != null) {
+            // Fast O(1) direct URI write (skips slow DocumentFile directory scan!)
+            val directUri = resolveDirectSafDocUri(context, treeUri, relPath)
+            if (directUri != null) {
+                try {
+                    val out = context.contentResolver.openOutputStream(directUri, "wt")
+                    if (out != null) {
+                        out.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
+                        notifyWidgets(context)
+                        return true
+                    }
+                } catch (_: Exception) {
                 }
-                notifyWidgets(context)
-                true
-            } catch (_: Exception) {
-                false
+            }
+            // Fallback once to create parent directories / file if not yet existing
+            val safRoot = getSavedSafTree(context)
+            if (safRoot != null) {
+                return try {
+                    val doc = findSafFile(safRoot, relPath, createIfMissing = true) ?: return false
+                    cacheSafDocUri(context, relPath, doc.uri)
+                    context.contentResolver.openOutputStream(doc.uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                        it.write(content)
+                    }
+                    notifyWidgets(context)
+                    true
+                } catch (_: Exception) {
+                    false
+                }
             }
         }
 
@@ -344,9 +438,11 @@ object VaultRepository {
     }
 
     fun readQuickNotesMd(context: Context): String = readRelFile(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
+    fun readQuickNotesMdFast(context: Context): String = readRelFileFastMirror(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
     fun saveQuickNotesMd(context: Context, md: String): Boolean = writeRelFile(context, REL_QUICK_NOTES, md)
 
     fun readDailyAnchorJson(context: Context): String = readRelFile(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
+    fun readDailyAnchorJsonFast(context: Context): String = readRelFileFastMirror(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun saveDailyAnchorJson(context: Context, jsonStr: String): Boolean {
         // Non-breaking merge: preserve all existing keys in daily-focus-anchor.json
         return try {
@@ -369,6 +465,7 @@ object VaultRepository {
     }
 
     fun readTaskWarehouseMd(context: Context): String = readRelFile(context, REL_TASK_WAREHOUSE, DEFAULT_TASK_WAREHOUSE_MD)
+    fun readTaskWarehouseMdFast(context: Context): String = readRelFileFastMirror(context, REL_TASK_WAREHOUSE, DEFAULT_TASK_WAREHOUSE_MD)
     fun saveTaskWarehouseMd(context: Context, md: String): Boolean = writeRelFile(context, REL_TASK_WAREHOUSE, md)
 
     fun readVaultTagsJson(context: Context): String {
