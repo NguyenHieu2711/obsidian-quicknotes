@@ -36,6 +36,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import kotlinx.coroutines.Dispatchers
@@ -157,7 +158,7 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#090C12"))
+            setBackgroundColor(Color.parseColor("#17191F"))
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -741,6 +742,23 @@ class MainActivity : AppCompatActivity() {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
                 cm.setPrimaryClip(ClipData.newPlainText("ObsidianQuick", text))
             } catch (_: Exception) {
+            }
+        }
+
+        @JavascriptInterface
+        fun syncSystemBars(statusHex: String, navHex: String, lightIcons: Boolean) {
+            runOnUiThread {
+                try {
+                    val sColor = Color.parseColor(statusHex)
+                    val nColor = Color.parseColor(navHex)
+                    window.statusBarColor = sColor
+                    window.navigationBarColor = nColor
+                    webView.setBackgroundColor(sColor)
+                    val ctrl = WindowInsetsControllerCompat(window, window.decorView)
+                    ctrl.isAppearanceLightStatusBars = lightIcons
+                    ctrl.isAppearanceLightNavigationBars = lightIcons
+                } catch (_: Exception) {
+                }
             }
         }
     }

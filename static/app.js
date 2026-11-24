@@ -43,7 +43,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.0.8",
+    appVersion: "1.1.0",
 
     quickItems: [],
     noteStreams: [],
@@ -142,8 +142,23 @@
   }
 
   function applyTheme() {
-    document.body.classList.toggle("theme-light", state.theme === "light");
-    document.body.classList.toggle("theme-slate", state.theme !== "light");
+    document.body.classList.remove("theme-slate", "theme-obsidian", "theme-light");
+    if (state.theme === "light") {
+      document.body.classList.add("theme-light");
+      if (hasNative && window.AndroidBridge.syncSystemBars) {
+        try { window.AndroidBridge.syncSystemBars("#F6F7FB", "#FFFFFF", true); } catch (_) {}
+      }
+    } else if (state.theme === "obsidian") {
+      document.body.classList.add("theme-obsidian");
+      if (hasNative && window.AndroidBridge.syncSystemBars) {
+        try { window.AndroidBridge.syncSystemBars("#1A1826", "#221F32", false); } catch (_) {}
+      }
+    } else {
+      document.body.classList.add("theme-slate");
+      if (hasNative && window.AndroidBridge.syncSystemBars) {
+        try { window.AndroidBridge.syncSystemBars("#17191F", "#1F222B", false); } catch (_) {}
+      }
+    }
   }
 
   function syncComposerButtons() {
@@ -985,15 +1000,16 @@
   function openSettingsSheet() {
     const cleanVaultName = String(state.vaultLabel || "").replace(/^\.+/, "").trim();
     const statusText = state.vaultConnected ? (cleanVaultName || "Vault đã nối") : "Chọn thư mục Vault";
-    const nextThemeLabel = state.theme === "light" ? "Nền tối" : "Nền sáng";
-    const nextModeLabel = state.notesDisplayMode === "chat" ? "Thẻ khối" : "Bong bóng";
+    const nextModeLabel = state.notesDisplayMode === "chat" ? "Đổi sang Thẻ khối" : "Đổi sang Bong bóng";
     const nextModeIcon = state.notesDisplayMode === "chat" ? ICONS.block : ICONS.chat;
     openSheet(
       '<div class="sheet-title"><span>Tùy chọn</span><span class="sheet-ver">v' + escHtml(state.appVersion) + "</span></div>" +
-      '<div class="sheet-grid-2">' +
-        '<button id="btnSwitchNotesModeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + nextModeIcon + "<span>" + nextModeLabel + "</span></span></button>" +
-        '<button id="btnSwitchThemeSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + (state.theme === "light" ? ICONS.moon : ICONS.sun) + "<span>" + nextThemeLabel + "</span></span></button>" +
+      '<div class="sheet-grid-3">' +
+        '<button class="swatch-btn ' + (state.theme === "slate" ? "active" : "") + '" data-pick-theme="slate" type="button"><span class="swatch-dot" style="background:#1f222b;"></span><span>Xám khói</span></button>' +
+        '<button class="swatch-btn ' + (state.theme === "obsidian" ? "active" : "") + '" data-pick-theme="obsidian" type="button"><span class="swatch-dot" style="background:#7c3aed;"></span><span>Obsidian</span></button>' +
+        '<button class="swatch-btn ' + (state.theme === "light" ? "active" : "") + '" data-pick-theme="light" type="button"><span class="swatch-dot" style="background:#f8fafc;border-color:#cbd5e1;"></span><span>Sáng</span></button>' +
       "</div>" +
+      '<button id="btnSwitchNotesModeSheet" class="sheet-row" style="margin-bottom:8px;justify-content:center;" type="button"><span class="sheet-row-left">' + nextModeIcon + "<span>" + nextModeLabel + "</span></span></button>" +
       '<button id="btnPickVaultSheet" class="sheet-row" style="margin-bottom:8px;" type="button">' +
         '<span class="sheet-row-left" style="flex:1;"><span style="display:flex;">' + ICONS.folder + '</span><span class="sheet-one-line">' + escHtml(statusText) + '</span></span>' +
         '<span style="color:var(--accent);font-weight:600;white-space:nowrap;">' + (state.vaultConnected ? "Đổi" : "Chọn") + "</span>" +
@@ -1004,17 +1020,19 @@
       "</div>"
     );
 
+    els.sheetContent.querySelectorAll("[data-pick-theme]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.theme = btn.getAttribute("data-pick-theme");
+        localStorage.setItem("oq_theme", state.theme);
+        applyTheme();
+        closeSheet();
+      });
+    });
     document.getElementById("btnSwitchNotesModeSheet").addEventListener("click", () => {
       state.notesDisplayMode = state.notesDisplayMode === "chat" ? "block" : "chat";
       localStorage.setItem("oq_notes_display", state.notesDisplayMode);
       closeSheet();
       renderAll();
-    });
-    document.getElementById("btnSwitchThemeSheet").addEventListener("click", () => {
-      state.theme = state.theme === "light" ? "slate" : "light";
-      localStorage.setItem("oq_theme", state.theme);
-      applyTheme();
-      closeSheet();
     });
     document.getElementById("btnPickVaultSheet").addEventListener("click", () => {
       closeSheet();
