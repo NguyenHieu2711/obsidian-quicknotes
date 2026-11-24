@@ -15,12 +15,13 @@
         <item name="android:backgroundDimAmount">0.55</item>
     </style>
 
-    <style name="Theme.ObsidianQuick.TransparentAction" parent="Theme.AppCompat.NoActionBar">
-        <item name="windowNoTitle">true</item>
+    <!-- Ultra-lightweight native Activity theme (zero AppCompat inflation overhead) -->
+    <style name="Theme.ObsidianQuick.TransparentAction" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
     </style>
 </resources>

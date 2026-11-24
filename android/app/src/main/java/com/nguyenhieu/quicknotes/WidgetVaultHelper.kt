@@ -80,6 +80,16 @@ object WidgetVaultHelper {
             .apply()
     }
 
+    fun cycleWidgetSortMode(context: Context, appWidgetId: Int): String {
+        val next = when (getWidgetSortMode(context, appWidgetId)) {
+            SORT_NEWEST -> SORT_NAME
+            SORT_NAME -> SORT_STAR
+            else -> SORT_NEWEST
+        }
+        setWidgetSortMode(context, appWidgetId, next)
+        return next
+    }
+
     fun clearWidgetPrefs(context: Context, appWidgetIds: IntArray) {
         val edit = context.getSharedPreferences(VaultRepository.PREFS_NAME, Context.MODE_PRIVATE).edit()
         for (id in appWidgetIds) {
@@ -375,7 +385,7 @@ object WidgetVaultHelper {
         if (clean.isEmpty()) return false
         val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         val finalRaw = applyStar(clean, starred)
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
 
         if (targetGroupKey.isBlank() || targetGroupKey == GROUP_ALL || targetGroupKey == GROUP_QUICK) {
             doc.quickItems.add(0, RawNoteEntry(hhmm, finalRaw))
@@ -391,7 +401,7 @@ object WidgetVaultHelper {
     }
 
     fun toggleNoteStar(context: Context, uid: String): Boolean {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
         val (list, idx) = locateNote(doc, uid) ?: return false
         val entry = list[idx]
         val (isStar, clean) = stripStar(entry.rawText)
@@ -400,7 +410,7 @@ object WidgetVaultHelper {
     }
 
     fun assignNoteToGroup(context: Context, uid: String, targetGroupKey: String, newSectionIfCreated: String = "active"): Boolean {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
         val (srcList, idx) = locateNote(doc, uid) ?: return false
         val moved = srcList.removeAt(idx)
         if (moved.time.isEmpty()) {
@@ -420,7 +430,7 @@ object WidgetVaultHelper {
     }
 
     fun convertNoteToFocusTask(context: Context, uid: String): Boolean {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
         val (srcList, idx) = locateNote(doc, uid) ?: return false
         val removed = srcList.removeAt(idx)
         val (starred, clean) = stripStar(removed.rawText)
@@ -431,14 +441,14 @@ object WidgetVaultHelper {
     fun updateNoteFromWidget(context: Context, uid: String, newCleanText: String, starred: Boolean): Boolean {
         val clean = newCleanText.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
         val (list, idx) = locateNote(doc, uid) ?: return false
         list[idx].rawText = applyStar(clean, starred)
         return VaultRepository.saveQuickNotesMd(context, serializeNotesDoc(doc))
     }
 
     fun deleteNoteFromWidget(context: Context, uid: String): Boolean {
-        val doc = parseNotesDoc(VaultRepository.readQuickNotesMd(context))
+        val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
         val (list, idx) = locateNote(doc, uid) ?: return false
         list.removeAt(idx)
         return VaultRepository.saveQuickNotesMd(context, serializeNotesDoc(doc))
@@ -630,7 +640,7 @@ object WidgetVaultHelper {
 
         val effectiveKey = if (targetGroupKey.isBlank() || targetGroupKey == GROUP_ALL) GROUP_FOCUS else targetGroupKey
         if (effectiveKey == GROUP_FOCUS) {
-            val rawJson = VaultRepository.readDailyAnchorJson(context)
+            val rawJson = VaultRepository.readDailyAnchorJsonFast(context)
             val root = try { JSONObject(rawJson) } catch (_: Exception) { JSONObject() }
             val arr = root.optJSONArray("customTasks") ?: JSONArray()
             val newTask = JSONObject().apply {
@@ -658,7 +668,7 @@ object WidgetVaultHelper {
         done: Boolean,
         starred: Boolean
     ): Boolean {
-        val md = VaultRepository.readTaskWarehouseMd(context)
+        val md = VaultRepository.readTaskWarehouseMdFast(context)
         val lines = md.replace("\r\n", "\n").split("\n").toMutableList()
         val sections = scanWarehouseSections(lines)
         val targetSec = sections.find { it.key.equals(sectionKey, ignoreCase = true) } ?: sections.firstOrNull()
@@ -701,7 +711,7 @@ object WidgetVaultHelper {
     fun toggleTaskDone(context: Context, uid: String): Boolean {
         if (uid.startsWith("TF|")) {
             val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJson(context)) } catch (_: Exception) { return false }
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
             val arr = root.optJSONArray("customTasks") ?: return false
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
@@ -713,7 +723,7 @@ object WidgetVaultHelper {
             }
             return false
         } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
             val idx = locateWarehouseLine(lines, uid)
             if (idx < 0) return false
             val m = taskLineRegex.find(lines[idx].trim()) ?: return false
@@ -728,7 +738,7 @@ object WidgetVaultHelper {
     fun toggleTaskStar(context: Context, uid: String): Boolean {
         if (uid.startsWith("TF|")) {
             val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJson(context)) } catch (_: Exception) { return false }
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
             val arr = root.optJSONArray("customTasks") ?: return false
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
@@ -743,7 +753,7 @@ object WidgetVaultHelper {
             }
             return false
         } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
             val idx = locateWarehouseLine(lines, uid)
             if (idx < 0) return false
             val m = taskLineRegex.find(lines[idx].trim()) ?: return false
@@ -756,12 +766,12 @@ object WidgetVaultHelper {
     }
 
     fun assignTaskToGroup(context: Context, uid: String, targetGroupKey: String): Boolean {
-        val current = findTaskByUid(context, uid) ?: return false
+        val current = findTaskByUid(context, uid, fastMirror = true) ?: return false
         if (current.groupKey.equals(targetGroupKey, ignoreCase = true)) return true
         if (!deleteTaskFromWidget(context, uid)) return false
 
         return if (targetGroupKey == GROUP_FOCUS) {
-            val rawJson = VaultRepository.readDailyAnchorJson(context)
+            val rawJson = VaultRepository.readDailyAnchorJsonFast(context)
             val root = try { JSONObject(rawJson) } catch (_: Exception) { JSONObject() }
             val arr = root.optJSONArray("customTasks") ?: JSONArray()
             val newTask = JSONObject().apply {
@@ -787,7 +797,7 @@ object WidgetVaultHelper {
         if (clean.isEmpty()) return false
         if (uid.startsWith("TF|")) {
             val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJson(context)) } catch (_: Exception) { return false }
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
             val arr = root.optJSONArray("customTasks") ?: return false
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
@@ -799,7 +809,7 @@ object WidgetVaultHelper {
             }
             return false
         } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
             val idx = locateWarehouseLine(lines, uid)
             if (idx < 0) return false
             val m = taskLineRegex.find(lines[idx].trim()) ?: return false
@@ -813,7 +823,7 @@ object WidgetVaultHelper {
     fun deleteTaskFromWidget(context: Context, uid: String): Boolean {
         if (uid.startsWith("TF|")) {
             val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJson(context)) } catch (_: Exception) { return false }
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
             val arr = root.optJSONArray("customTasks") ?: return false
             val nextArr = JSONArray()
             var removed = false
@@ -829,7 +839,7 @@ object WidgetVaultHelper {
             root.put("customTasks", nextArr)
             return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
         } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMd(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
             val idx = locateWarehouseLine(lines, uid)
             if (idx < 0) return false
             lines.removeAt(idx)

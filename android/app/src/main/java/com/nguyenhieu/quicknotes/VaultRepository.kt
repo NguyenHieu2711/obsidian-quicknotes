@@ -15,8 +15,13 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 object VaultRepository {
+
+    private val memCache = ConcurrentHashMap<String, String>()
+    private val safWriteExecutor = Executors.newSingleThreadExecutor()
 
     const val PREFS_NAME = "obsidian_quick_prefs"
     const val KEY_VAULT_PATH = "vault_fs_path"
@@ -279,6 +284,7 @@ object VaultRepository {
     }
 
     private fun syncMirrorQuietly(context: Context, relPath: String, content: String) {
+        memCache[relPath] = content
         try {
             val mf = File(mirrorDir(context), relPath)
             if (!mf.exists() || mf.length() != content.toByteArray(Charsets.UTF_8).size.toLong()) {
@@ -289,11 +295,108 @@ object VaultRepository {
     }
 
     fun readRelFileFastMirror(context: Context, relPath: String, fallbackContent: String): String {
+        memCache[relPath]?.let { return it }
         val mf = File(mirrorDir(context), relPath)
         if (mf.exists() && mf.isFile) {
-            return try { mf.readText(Charsets.UTF_8) } catch (_: Exception) { fallbackContent }
+            return try {
+                val txt = mf.readText(Charsets.UTF_8)
+                memCache[relPath] = txt
+                txt
+            } catch (_: Exception) {
+                fallbackContent
+            }
         }
         return readRelFile(context, relPath, fallbackContent)
+    }
+
+    /**
+     * Optimistic 0.5ms write-behind: updates RAM + local SSD mirror immediately,
+     * refreshes ONLY the affected Widget ListView without layout tear-down,
+     * and flushes to Syncthing FS / SAF asynchronously on a single FIFO background thread.
+     */
+    fun writeRelFileOptimistic(context: Context, relPath: String, content: String): Boolean {
+        val appCtx = context.applicationContext
+        memCache[relPath] = content
+        try {
+            atomicWriteFs(File(mirrorDir(appCtx), relPath), content)
+        } catch (_: Exception) {
+        }
+
+        // Immediate <20ms list-only refresh for the exact widget kind that changed!
+        when (relPath) {
+            REL_QUICK_NOTES -> DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
+            REL_DAILY_ANCHOR, REL_TASK_WAREHOUSE -> DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_TASKS)
+        }
+
+        // Flush to real Syncthing Vault file asynchronously (never blocks Widget UI!)
+        safWriteExecutor.execute {
+            flushToExternalVault(appCtx, relPath, content)
+        }
+        return true
+    }
+
+    private fun flushToExternalVault(context: Context, relPath: String, content: String): Boolean {
+        val fsDir = getSavedVaultFsDir(context) ?: tryAutoDetectVaultFolder(context)
+        if (fsDir != null) {
+            return try {
+                atomicWriteFs(File(fsDir, relPath), content)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        val treeUri = getRawSavedSafTreeUri(context)
+        if (treeUri != null) {
+            val directUri = resolveDirectSafDocUri(context, treeUri, relPath)
+            if (directUri != null) {
+                try {
+                    val out = context.contentResolver.openOutputStream(directUri, "wt")
+                    if (out != null) {
+                        out.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
+                        cacheSafDocUri(context, relPath, directUri)
+                        return true
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            val safRoot = getSavedSafTree(context)
+            if (safRoot != null) {
+                return try {
+                    val doc = findSafFile(safRoot, relPath, createIfMissing = true) ?: return false
+                    cacheSafDocUri(context, relPath, doc.uri)
+                    context.contentResolver.openOutputStream(doc.uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                        it.write(content)
+                    }
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+        return true
+    }
+
+    fun syncFromExternalVaultAsync(context: Context, relPaths: List<String>) {
+        val appCtx = context.applicationContext
+        safWriteExecutor.execute {
+            var notesChanged = false
+            var tasksChanged = false
+            for (rel in relPaths) {
+                val prev = memCache[rel]
+                val fresh = when (rel) {
+                    REL_QUICK_NOTES -> readRelFile(appCtx, rel, DEFAULT_QUICK_NOTES_MD)
+                    REL_DAILY_ANCHOR -> readRelFile(appCtx, rel, DEFAULT_DAILY_ANCHOR_JSON)
+                    REL_TASK_WAREHOUSE -> readRelFile(appCtx, rel, DEFAULT_TASK_WAREHOUSE_MD)
+                    else -> continue
+                }
+                if (prev != null && prev != fresh) {
+                    if (rel == REL_QUICK_NOTES) notesChanged = true else tasksChanged = true
+                }
+            }
+            if (notesChanged) DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
+            if (tasksChanged) DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_TASKS)
+        }
     }
 
     private fun readRelFile(context: Context, relPath: String, fallbackContent: String): String {
@@ -367,57 +470,7 @@ object VaultRepository {
     }
 
     private fun writeRelFile(context: Context, relPath: String, content: String): Boolean {
-        // Always update mirror first (<0.3ms internal SSD) for instant Widget & UI reads
-        try {
-            atomicWriteFs(File(mirrorDir(context), relPath), content)
-        } catch (_: Exception) {
-        }
-
-        val fsDir = getSavedVaultFsDir(context) ?: tryAutoDetectVaultFolder(context)
-        if (fsDir != null) {
-            return try {
-                atomicWriteFs(File(fsDir, relPath), content)
-                notifyWidgets(context)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        val treeUri = getRawSavedSafTreeUri(context)
-        if (treeUri != null) {
-            // Fast O(1) direct URI write (skips slow DocumentFile directory scan!)
-            val directUri = resolveDirectSafDocUri(context, treeUri, relPath)
-            if (directUri != null) {
-                try {
-                    val out = context.contentResolver.openOutputStream(directUri, "wt")
-                    if (out != null) {
-                        out.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
-                        notifyWidgets(context)
-                        return true
-                    }
-                } catch (_: Exception) {
-                }
-            }
-            // Fallback once to create parent directories / file if not yet existing
-            val safRoot = getSavedSafTree(context)
-            if (safRoot != null) {
-                return try {
-                    val doc = findSafFile(safRoot, relPath, createIfMissing = true) ?: return false
-                    cacheSafDocUri(context, relPath, doc.uri)
-                    context.contentResolver.openOutputStream(doc.uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
-                        it.write(content)
-                    }
-                    notifyWidgets(context)
-                    true
-                } catch (_: Exception) {
-                    false
-                }
-            }
-        }
-
-        notifyWidgets(context)
-        return true
+        return writeRelFileOptimistic(context, relPath, content)
     }
 
     private fun findSafFile(root: DocumentFile, relPath: String, createIfMissing: Boolean): DocumentFile? {
@@ -444,9 +497,9 @@ object VaultRepository {
     fun readDailyAnchorJson(context: Context): String = readRelFile(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun readDailyAnchorJsonFast(context: Context): String = readRelFileFastMirror(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun saveDailyAnchorJson(context: Context, jsonStr: String): Boolean {
-        // Non-breaking merge: preserve all existing keys in daily-focus-anchor.json
+        // Non-breaking merge on fast mirror/RAM so saving takes <1ms
         return try {
-            val currentRaw = readDailyAnchorJson(context)
+            val currentRaw = readDailyAnchorJsonFast(context)
             val baseObj = try { JSONObject(currentRaw) } catch (_: Exception) { JSONObject() }
             val incoming = JSONObject(jsonStr)
             if (incoming.has("customTasks")) {

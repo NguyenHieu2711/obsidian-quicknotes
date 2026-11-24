@@ -75,6 +75,7 @@
             android:label="Obsidian · Quick Notes">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.nguyenhieu.quicknotes.ACTION_CYCLE_SORT" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -93,6 +94,7 @@
             android:label="Obsidian · Quick Task">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.nguyenhieu.quicknotes.ACTION_CYCLE_SORT" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
