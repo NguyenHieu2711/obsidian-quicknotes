@@ -21,6 +21,7 @@ import java.util.concurrent.Executors
 object VaultRepository {
 
     private val memCache = ConcurrentHashMap<String, String>()
+    private val lastWrittenGroupFiles = ConcurrentHashMap<String, String>()
     private val safWriteExecutor = Executors.newSingleThreadExecutor()
 
     const val PREFS_NAME = "obsidian_quick_prefs"
@@ -28,6 +29,8 @@ object VaultRepository {
     const val KEY_VAULT_SAF_URI = "vault_saf_uri"
     const val KEY_OTA_WEB_VERSION = "ota_web_version"
 
+    const val REL_NOTES_DIR = "0. Inbox/⚡ Ghi nhanh"
+    const val QUICK_FILE_NAME = "⚡ Ghi nhanh.md"
     const val REL_QUICK_NOTES = "0. Inbox/⚡ Quick Notes.md"
     const val REL_DAILY_ANCHOR = "9. System/99. Nhà kho chứa Scripts Dataview/Backup/daily-focus-anchor.json"
     const val REL_TASK_WAREHOUSE = "1. Actions/📁 0. Kế hoạch & Lịch trình/✅ Nhà kho chứa Task.md"
@@ -192,10 +195,15 @@ object VaultRepository {
         val mirrorMax = maxOf(m1, m2, m3)
 
         val fsDir = getSavedVaultFsDir(context) ?: return mirrorMax
+        val notesFolder = File(fsDir, REL_NOTES_DIR)
+        val notesFolderMax = if (notesFolder.isDirectory) {
+            notesFolder.listFiles { f -> f.isFile && f.name.endsWith(".md", ignoreCase = true) }
+                ?.maxOfOrNull { it.lastModified() } ?: 0L
+        } else 0L
         val f1 = File(fsDir, REL_QUICK_NOTES).takeIf { it.exists() }?.lastModified() ?: 0L
         val f2 = File(fsDir, REL_DAILY_ANCHOR).takeIf { it.exists() }?.lastModified() ?: 0L
         val f3 = File(fsDir, REL_TASK_WAREHOUSE).takeIf { it.exists() }?.lastModified() ?: 0L
-        return maxOf(mirrorMax, f1, f2, f3)
+        return maxOf(mirrorMax, notesFolderMax, f1, f2, f3)
     }
 
     private fun mergeSyncthingConflictsIfAny(vaultRoot: File) {
@@ -385,7 +393,7 @@ object VaultRepository {
             for (rel in relPaths) {
                 val prev = memCache[rel]
                 val fresh = when (rel) {
-                    REL_QUICK_NOTES -> readRelFile(appCtx, rel, DEFAULT_QUICK_NOTES_MD)
+                    REL_QUICK_NOTES -> readQuickNotesMd(appCtx)
                     REL_DAILY_ANCHOR -> readRelFile(appCtx, rel, DEFAULT_DAILY_ANCHOR_JSON)
                     REL_TASK_WAREHOUSE -> readRelFile(appCtx, rel, DEFAULT_TASK_WAREHOUSE_MD)
                     else -> continue
@@ -486,13 +494,268 @@ object VaultRepository {
         val existing = cur.findFile(fileName)
         if (existing != null) return existing
         if (!createIfMissing) return null
-        val mime = if (fileName.endsWith(".json")) "application/json" else "text/markdown"
-        return cur.createFile(mime, fileName)
+        // Use application/octet-stream so ExternalStorageProvider never appends a duplicate .md/.json suffix
+        return cur.createFile("application/octet-stream", fileName)
     }
 
-    fun readQuickNotesMd(context: Context): String = readRelFile(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
+    // =========================================================================
+    // SEAMLESS PER-GROUP FILE SYNC ENGINE (0. Inbox/⚡ Ghi nhanh/<Tên nhóm>.md)
+    // =========================================================================
+    private fun sanitizeGroupFileName(groupTitle: String): String {
+        val clean = groupTitle.trim().replace(Regex("""[/\\:*?"<>|]"""), "-").trim()
+        return if (clean.isEmpty()) QUICK_FILE_NAME else "$clean.md"
+    }
+
+    private fun parseSingleGroupMdFile(fileBaseName: String, content: String): Triple<String, String, List<String>> {
+        val rawLines = content.replace("\r\n", "\n").split("\n")
+        var idx = 0
+        var nhomMeta = ""
+
+        // Parse optional YAML frontmatter (--- ... ---)
+        if (rawLines.isNotEmpty() && rawLines[0].trim() == "---") {
+            idx = 1
+            while (idx < rawLines.size && rawLines[idx].trim() != "---") {
+                val ln = rawLines[idx].trim()
+                if (ln.startsWith("nhom:", ignoreCase = true)) {
+                    nhomMeta = ln.substringAfter(":").trim().trim('"', '\'')
+                }
+                idx++
+            }
+            if (idx < rawLines.size && rawLines[idx].trim() == "---") idx++
+        }
+
+        val bullets = mutableListOf<String>()
+        while (idx < rawLines.size) {
+            val raw = rawLines[idx]
+            val tr = raw.trim()
+            idx++
+            if (tr.isEmpty() || tr == "---" || tr.startsWith("# ")) continue
+            if (tr.startsWith(">") && tr.contains("Dữ liệu nháp tạm thời", ignoreCase = true)) continue
+            if (raw.startsWith("\t- ") || raw.startsWith("  - ") || tr.startsWith("- ")) {
+                bullets.add(raw.trimEnd())
+            } else {
+                bullets.add("- $tr")
+            }
+        }
+
+        val isQuickFile = fileBaseName.equals("⚡ Ghi nhanh", ignoreCase = true) ||
+            fileBaseName.equals("Ghi nhanh", ignoreCase = true) ||
+            nhomMeta.equals("Ghi nhanh", ignoreCase = true)
+        val section = when {
+            isQuickFile -> "quick"
+            nhomMeta.contains("Kho", ignoreCase = true) || fileBaseName.contains("Kho", ignoreCase = true) -> "archive"
+            else -> "active"
+        }
+        return Triple(section, fileBaseName, bullets)
+    }
+
+    private fun readGroupFilesMapFromVault(context: Context): Map<String, String>? {
+        val fsDir = getSavedVaultFsDir(context) ?: tryAutoDetectVaultFolder(context)
+        if (fsDir != null) {
+            val dir = File(fsDir, REL_NOTES_DIR)
+            if (!dir.exists() || !dir.isDirectory) return null
+            val mdFiles = dir.listFiles { f ->
+                f.isFile && f.name.endsWith(".md", ignoreCase = true) && !f.name.contains(".sync-conflict-")
+            }.orEmpty()
+            if (mdFiles.isEmpty()) return null
+            val out = LinkedHashMap<String, String>()
+            for (f in mdFiles) {
+                try {
+                    out[f.name] = f.readText(Charsets.UTF_8)
+                } catch (_: Exception) {
+                }
+            }
+            return if (out.isEmpty()) null else out
+        }
+
+        val treeUri = getRawSavedSafTreeUri(context) ?: return null
+        return try {
+            val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+            val folderDocId = if (rootDocId.endsWith(":") || rootDocId.endsWith("/")) {
+                "$rootDocId$REL_NOTES_DIR"
+            } else {
+                "$rootDocId/$REL_NOTES_DIR"
+            }
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, folderDocId)
+            val projection = arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME
+            )
+            val out = LinkedHashMap<String, String>()
+            context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                while (cursor.moveToNext()) {
+                    if (idCol < 0 || nameCol < 0) continue
+                    val docId = cursor.getString(idCol) ?: continue
+                    val name = cursor.getString(nameCol) ?: continue
+                    if (!name.endsWith(".md", ignoreCase = true) || name.contains(".sync-conflict-")) continue
+                    val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                    cacheSafDocUri(context, "$REL_NOTES_DIR/$name", fileUri)
+                    try {
+                        val txt = context.contentResolver.openInputStream(fileUri)
+                            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                        if (txt != null) out[name] = txt
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            if (out.isEmpty()) null else out
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun readGroupFolderAsUnifiedMd(context: Context): String? {
+        val filesMap = readGroupFilesMapFromVault(context) ?: return null
+        val quickBullets = mutableListOf<String>()
+        val activeGroups = mutableListOf<Pair<String, List<String>>>()
+        val archiveGroups = mutableListOf<Pair<String, List<String>>>()
+
+        for ((fileName, content) in filesMap) {
+            lastWrittenGroupFiles["$REL_NOTES_DIR/$fileName"] = content
+            val baseName = fileName.removeSuffix(".md").removeSuffix(".MD")
+            val (section, title, bullets) = parseSingleGroupMdFile(baseName, content)
+            when (section) {
+                "quick" -> quickBullets.addAll(bullets)
+                "archive" -> archiveGroups.add(Pair(title, bullets))
+                else -> activeGroups.add(Pair(title, bullets))
+            }
+        }
+
+        val preferredActive = listOf(
+            "Bảng cảm giác phấn đấu",
+            "Những điều cốt lõi bản thân",
+            "Cách trình bày nội dung lên Flow"
+        )
+        activeGroups.sortWith(compareBy<Pair<String, List<String>>> {
+            val p = preferredActive.indexOfFirst { pref -> pref.equals(it.first, ignoreCase = true) }
+            if (p >= 0) p else 999
+        }.thenBy { it.first.lowercase(Locale.getDefault()) })
+
+        archiveGroups.sortWith(compareBy<Pair<String, List<String>>> {
+            if (it.first.equals("Kho Notes chung", ignoreCase = true)) 0 else 1
+        }.thenBy { it.first.lowercase(Locale.getDefault()) })
+
+        if (activeGroups.isEmpty()) {
+            activeGroups.add(Pair("Bảng cảm giác phấn đấu", emptyList()))
+            activeGroups.add(Pair("Những điều cốt lõi bản thân", emptyList()))
+        }
+        if (archiveGroups.isEmpty()) {
+            archiveGroups.add(Pair("Kho Notes chung", emptyList()))
+        }
+
+        val sb = StringBuilder()
+        sb.append("# ⚡ Ghi nhanh\n")
+        for (b in quickBullets) sb.append(b).append("\n")
+
+        sb.append("# 🎯 Đang giải quyết\n")
+        for ((title, bullets) in activeGroups) {
+            sb.append("## ").append(title).append("\n")
+            for (b in bullets) sb.append(b).append("\n")
+        }
+
+        sb.append("# 📥 Kho lưu trữ chung\n")
+        for ((title, bullets) in archiveGroups) {
+            sb.append("## ").append(title).append("\n")
+            for (b in bullets) sb.append(b).append("\n")
+        }
+        return sb.toString()
+    }
+
+    private fun splitUnifiedMdIntoGroupFiles(unifiedMd: String): Map<String, String> {
+        val quickLines = mutableListOf<String>()
+        val activeMap = LinkedHashMap<String, MutableList<String>>()
+        val archiveMap = LinkedHashMap<String, MutableList<String>>()
+        var section = ""
+        var currentTitle = ""
+
+        for (rawLine in unifiedMd.replace("\r\n", "\n").split("\n")) {
+            val tr = rawLine.trim()
+            if (tr.isEmpty() || tr == "---") continue
+            if (tr.startsWith("# ") && !tr.startsWith("## ")) {
+                val h1 = tr.removePrefix("# ").trim()
+                currentTitle = ""
+                section = when {
+                    h1.contains("Ghi nhanh", ignoreCase = true) || h1.contains("Nháp", ignoreCase = true) -> "quick"
+                    h1.contains("Kho", ignoreCase = true) || h1.contains("Lưu trữ", ignoreCase = true) -> "archive"
+                    else -> "active"
+                }
+                continue
+            }
+            if (tr.startsWith("## ")) {
+                currentTitle = tr.removePrefix("## ").trim()
+                if (currentTitle.isNotEmpty()) {
+                    if (section == "archive") archiveMap.getOrPut(currentTitle) { mutableListOf() }
+                    else activeMap.getOrPut(currentTitle) { mutableListOf() }
+                }
+                continue
+            }
+            if (section == "quick" || currentTitle.isEmpty()) {
+                quickLines.add(rawLine.trimEnd())
+            } else if (section == "archive") {
+                archiveMap.getOrPut(currentTitle) { mutableListOf() }.add(rawLine.trimEnd())
+            } else {
+                activeMap.getOrPut(currentTitle) { mutableListOf() }.add(rawLine.trimEnd())
+            }
+        }
+
+        val out = LinkedHashMap<String, String>()
+        out["$REL_NOTES_DIR/$QUICK_FILE_NAME"] = buildString {
+            append("---\nnhom: Ghi nhanh\n---\n")
+            for (ln in quickLines) append(ln).append("\n")
+        }
+        for ((title, lines) in activeMap) {
+            val rel = "$REL_NOTES_DIR/${sanitizeGroupFileName(title)}"
+            out[rel] = buildString {
+                append("---\nnhom: Đang giải quyết\n---\n")
+                for (ln in lines) append(ln).append("\n")
+            }
+        }
+        for ((title, lines) in archiveMap) {
+            val rel = "$REL_NOTES_DIR/${sanitizeGroupFileName(title)}"
+            out[rel] = buildString {
+                append("---\nnhom: Kho lưu trữ\n---\n")
+                for (ln in lines) append(ln).append("\n")
+            }
+        }
+        return out
+    }
+
+    fun readQuickNotesMd(context: Context): String {
+        val fromFolder = readGroupFolderAsUnifiedMd(context)
+        if (fromFolder != null) {
+            syncMirrorQuietly(context, REL_QUICK_NOTES, fromFolder)
+            return fromFolder
+        }
+        return readRelFile(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
+    }
+
     fun readQuickNotesMdFast(context: Context): String = readRelFileFastMirror(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
-    fun saveQuickNotesMd(context: Context, md: String): Boolean = writeRelFile(context, REL_QUICK_NOTES, md)
+
+    fun saveQuickNotesMd(context: Context, md: String): Boolean {
+        val appCtx = context.applicationContext
+        // 1. Instant 0.3ms RAM + local mirror update + instant ListView-only Widget refresh
+        memCache[REL_QUICK_NOTES] = md
+        try {
+            atomicWriteFs(File(mirrorDir(appCtx), REL_QUICK_NOTES), md)
+        } catch (_: Exception) {
+        }
+        DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
+
+        // 2. Async background flush: writes ONLY changed per-group files in 0. Inbox/⚡ Ghi nhanh/<Tên nhóm>.md
+        val perGroupFiles = splitUnifiedMdIntoGroupFiles(md)
+        safWriteExecutor.execute {
+            for ((relPath, fileContent) in perGroupFiles) {
+                val prev = lastWrittenGroupFiles[relPath]
+                if (prev == null || prev != fileContent) {
+                    val ok = flushToExternalVault(appCtx, relPath, fileContent)
+                    if (ok) lastWrittenGroupFiles[relPath] = fileContent
+                }
+            }
+        }
+        return true
+    }
 
     fun readDailyAnchorJson(context: Context): String = readRelFile(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun readDailyAnchorJsonFast(context: Context): String = readRelFileFastMirror(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
