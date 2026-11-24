@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.3.0",
+    appVersion: "1.3.1",
 
     quickItems: [],
     noteStreams: [],
@@ -145,12 +145,14 @@
       .replace(/"/g, "&quot;");
   }
 
-  function formatRichText(raw) {
+  function formatRichText(raw, hideStarPrefix) {
     let str = String(raw || "");
     let starHtml = "";
     if (/^★\s*/.test(str)) {
       str = str.replace(/^★\s*/, "");
-      starHtml = '<span class="star-inline">' + ICONS.starFill + "</span>";
+      if (!hideStarPrefix) {
+        starHtml = '<span class="star-inline">' + ICONS.starFill + "</span>";
+      }
     }
     const safe = escHtml(str);
     return starHtml + safe.replace(/(#[\p{L}\p{N}_/-]+)/gu, '<span class="tag-pill">$1</span>');
@@ -474,13 +476,18 @@
     }
 
     els.quickList.innerHTML = items.map((it) => {
+      const starred = /^★\s*/.test(it.text || "");
+      const leadMarker = starred
+        ? '<span class="item-lead-star">' + ICONS.starFill + "</span>"
+        : '<span class="item-lead-dot"></span>';
       const childrenHtml = (it.children && it.children.length)
         ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + formatRichText(c) + "</div>").join("") + "</div>"
         : "";
       return (
         '<div class="quick-item" data-id="' + it.id + '">' +
+          leadMarker +
           '<div class="qi-body" data-edit-quick="' + it.id + '">' +
-            '<div class="qi-text">' + formatRichText(it.text) + "</div>" +
+            '<div class="qi-text">' + formatRichText(it.text, true) + "</div>" +
             childrenHtml +
           "</div>" +
         "</div>"
@@ -520,12 +527,19 @@
       return;
     }
     els.notesStreamList.innerHTML = filtered.map((it) => {
+      const starred = /^★\s*/.test(it.text || "");
+      const leadMarker = starred
+        ? '<span class="item-lead-star">' + ICONS.starFill + "</span>"
+        : '<span class="item-lead-dot"></span>';
       const subHtml = (it.children && it.children.length)
         ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + formatRichText(c) + "</div>").join("") + "</div>"
         : "";
       return (
         '<div class="note-entry" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
-          '<div class="ne-text">' + formatRichText(it.text) + "</div>" +
+          '<div class="ne-lead-row">' +
+            leadMarker +
+            '<div class="ne-text">' + formatRichText(it.text, true) + "</div>" +
+          "</div>" +
           subHtml +
         "</div>"
       );

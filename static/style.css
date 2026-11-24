@@ -8,11 +8,11 @@ body.theme-slate {
   --bg-canvas: #1b1e26;
   --canvas-dot: rgba(255, 255, 255, 0.035);
   --bg-sheet: #1f222b;
-  --card: #252934;
+  --card: #232836;
   --card-chat: #262f42;
   --card-active: #233349;
-  --input-bg: #222630;
-  --border: #323846;
+  --input-bg: #1e222b;
+  --border: #343d52;
   --border-soft: #2a2f3c;
   --accent: #38bdf8;
   --accent-fg: #061826;
@@ -355,17 +355,48 @@ svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
 .quick-item {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 11px;
   padding: 11px 14px;
   margin-bottom: 8px;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   transition: transform 0.16s ease, opacity 0.18s ease, border-color 0.16s ease;
+}
+
+.item-lead-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 7.5px;
+  flex-shrink: 0;
+}
+
+.item-lead-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3.5px;
+  flex-shrink: 0;
+}
+
+.item-lead-star svg {
+  width: 13.5px;
+  height: 13.5px;
+}
+
+.ne-lead-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.stream-list.chat-mode .item-lead-dot {
+  display: none;
 }
 
 .quick-item.holding-focus,
@@ -947,7 +978,7 @@ svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
 .composer-box {
   flex: 1;
   background: var(--input-bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   border-radius: 22px;
   padding: 5px 6px 5px 15px;
   display: flex;
