@@ -1,60 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Soft back stacked card layer -->
+    <!-- Outer Flat Violet QuickCapture Tray / Arch (Zero Gradient) -->
     <path
-        android:fillColor="#26FFFFFF"
-        android:pathData="M37,26h38c4.4,0 8,3.6 8,8v36c0,4.4 -3.6,8 -8,8H37c-4.4,0 -8,-3.6 -8,-8V34c0,-4.4 3.6,-8 8,-8z" />
+        android:fillColor="#7C5CFA"
+        android:pathData="M39,30h30c5.5,0 10,4.5 10,10v32.5c0,2.2 -1.8,4 -4,4h-1.8c-2.2,0 -4,-1.8 -4,-4V43.5c0,-1.4 -1.1,-2.5 -2.5,-2.5H41.3c-1.4,0 -2.5,1.1 -2.5,2.5v29c0,2.2 -1.8,4 -4,4H33c-2.2,0 -4,-1.8 -4,-4V40C29,34.5 33.5,30 39,30z" />
 
-    <!-- Main sleek note card -->
-    <path android:pathData="M33,30h38c4.4,0 8,3.6 8,8v36c0,4.4 -3.6,8 -8,8H33c-4.4,0 -8,-3.6 -8,-8V38c0,-4.4 3.6,-8 8,-8z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="28"
-                android:startY="30"
-                android:endX="76"
-                android:endY="82"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#F8FAFC" />
-                <item android:offset="1.0" android:color="#DBEAFE" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Two crisp minimal note lines inside card -->
+    <!-- Crisp White Note Slot Cards inside Tray -->
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#64748B"
-        android:strokeWidth="3.2"
-        android:strokeLineCap="round"
-        android:pathData="M35,43h22M35,53h15" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M38.8,41h30.4v32.5h-30.4z" />
 
-    <!-- Luminous Violet-Cyan Quick Check Badge overlapping bottom-right -->
-    <path android:pathData="M67,66m-15,0a15,15 0 1,1 30,0a15,15 0 1,1 -30,0">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="54"
-                android:startY="52"
-                android:endX="80"
-                android:endY="80"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#8B5CF6" />
-                <item android:offset="1.0" android:color="#06B6D4" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Crisp white check stroke inside badge -->
+    <!-- Primary Middle Divider Bar (Flat Obsidian Violet) -->
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3.4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M61,66.2l4.2,4.2l8.3,-8.6" />
+        android:fillColor="#7C5CFA"
+        android:pathData="M36,52.2h36v4.2h-36z" />
+
+    <!-- Refined Lower Card Step Line (Flat Soft Violet, sharper hierarchy than old icon) -->
+    <path
+        android:fillColor="#B8A5FD"
+        android:pathData="M38.8,65.2h30.4v3.4h-30.4z" />
 </vector>
