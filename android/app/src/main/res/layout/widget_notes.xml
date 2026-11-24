@@ -88,7 +88,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:padding="12dp"
-            android:text="Chưa có ghi chú · Chạm + để ghi ngay"
+            android:text="Chưa có ghi chú"
             android:textColor="#6F7A92"
             android:textSize="12.5sp" />
     </FrameLayout>

@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.2.0",
+    appVersion: "1.2.1",
 
     quickItems: [],
     noteStreams: [],
@@ -462,7 +462,7 @@
   function renderQuickTab() {
     const items = state.quickItems.filter((it) => matchesQuery(it.text, it.children));
     if (items.length === 0) {
-      els.quickList.innerHTML = '<div class="empty-box">Khay nháp sạch gọn.<br/>Mọi ý chợt nảy ra cứ gõ thẳng xuống dưới, rảnh tay bấm nút 3 chấm dọn sau.</div>';
+      els.quickList.innerHTML = '<div class="empty-box">Chưa có nháp</div>';
       return;
     }
 
@@ -511,7 +511,7 @@
     }
     const filtered = curStream.items.filter((it) => matchesQuery(it.text, it.children));
     if (filtered.length === 0) {
-      els.notesStreamList.innerHTML = '<div class="empty-box">Chưa có ghi chú trong mạch này.</div>';
+      els.notesStreamList.innerHTML = '<div class="empty-box">Chưa có ghi chú</div>';
       return;
     }
     els.notesStreamList.innerHTML = filtered.map((it) => {
@@ -537,7 +537,7 @@
     );
 
     if (focusFiltered.length === 0) {
-      els.focusTaskList.innerHTML = '<div class="empty-box">Chưa có việc trọng tâm hôm nay.<br/>Gõ bên dưới hoặc đẩy từ Nháp / Kho chờ lên.</div>';
+      els.focusTaskList.innerHTML = '<div class="empty-box">Chưa có việc hôm nay</div>';
     } else {
       els.focusTaskList.innerHTML = focusFiltered.map((t) => {
         const hasSubs = Array.isArray(t.subTasks) && t.subTasks.length > 0;
@@ -589,7 +589,7 @@
 
     if (state.warehouseOpen) {
       if (pendingWh.length === 0) {
-        els.warehouseTaskList.innerHTML = '<div class="empty-box" style="padding:18px;">Kho chờ trống.</div>';
+        els.warehouseTaskList.innerHTML = '<div class="empty-box" style="padding:18px;">Trống</div>';
       } else {
         let lastGrp = "";
         const html = [];

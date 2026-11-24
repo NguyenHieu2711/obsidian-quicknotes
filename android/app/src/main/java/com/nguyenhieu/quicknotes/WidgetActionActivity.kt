@@ -275,7 +275,7 @@ class WidgetActionActivity : AppCompatActivity() {
             cornerRadius = dp(13).toFloat()
         }
         val editBox = EditText(this).apply {
-            hint = if (isTask) "Nhập đầu việc..." else "Cứ gõ nhanh (gắn nhóm ngay hoặc sau)..."
+            hint = if (isTask) "Nhập việc..." else "Ghi nhanh..."
             setHintTextColor(Color.parseColor("#68748D"))
             setTextColor(Color.parseColor("#F1F5F9"))
             textSize = 14.5f
