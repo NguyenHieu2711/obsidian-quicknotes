@@ -4,24 +4,30 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Outer Flat Violet QuickCapture Tray / Arch (Zero Gradient) -->
+    <!-- Khung ghi chú phẳng viền Cyan tối giản (đồng bộ 100% hệ màu Bàn phím ảo) -->
     <path
-        android:fillColor="#7C5CFA"
-        android:pathData="M39,30h30c5.5,0 10,4.5 10,10v32.5c0,2.2 -1.8,4 -4,4h-1.8c-2.2,0 -4,-1.8 -4,-4V43.5c0,-1.4 -1.1,-2.5 -2.5,-2.5H41.3c-1.4,0 -2.5,1.1 -2.5,2.5v29c0,2.2 -1.8,4 -4,4H33c-2.2,0 -4,-1.8 -4,-4V40C29,34.5 33.5,30 39,30z" />
-
-    <!-- Crisp White Note Slot Cards inside Tray -->
+        android:fillColor="#151B26"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="2.4"
+        android:pathData="M34,27h40c3.3,0 6,2.7 6,6v42c0,3.3 -2.7,6 -6,6h-40c-3.3,0 -6,-2.7 -6,-6v-42c0,-3.3 2.7,-6 6,-6z" />
+    <!-- Thanh tiêu đề Cyan -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M38.8,41h30.4v32.5h-30.4z" />
-
-    <!-- Primary Middle Divider Bar (Flat Obsidian Violet) -->
+        android:fillColor="#38BDF8"
+        android:pathData="M37,36h24c1.1,0 2,0.9 2,2v1c0,1.1 -0.9,2 -2,2h-24c-1.1,0 -2,-0.9 -2,-2v-1c0,-1.1 0.9,-2 2,-2z" />
+    <!-- Dòng ghi chú 1 -->
     <path
-        android:fillColor="#7C5CFA"
-        android:pathData="M36,52.2h36v4.2h-36z" />
-
-    <!-- Refined Lower Card Step Line (Flat Soft Violet, sharper hierarchy than old icon) -->
+        android:fillColor="#94A3B8"
+        android:pathData="M37,47h34c1.1,0 2,0.9 2,2v0.5c0,1.1 -0.9,2 -2,2h-34c-1.1,0 -2,-0.9 -2,-2v-0.5c0,-1.1 0.9,-2 2,-2z" />
+    <!-- Dòng ghi chú 2 -->
     <path
-        android:fillColor="#B8A5FD"
-        android:pathData="M38.8,65.2h30.4v3.4h-30.4z" />
+        android:fillColor="#94A3B8"
+        android:pathData="M37,57h19c1.1,0 2,0.9 2,2v0.5c0,1.1 -0.9,2 -2,2h-19c-1.1,0 -2,-0.9 -2,-2v-0.5c0,-1.1 0.9,-2 2,-2z" />
+    <!-- Dòng ghi chú 3 -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M37,67h16c1.1,0 2,0.9 2,2v0.5c0,1.1 -0.9,2 -2,2h-16c-1.1,0 -2,-0.9 -2,-2v-0.5c0,-1.1 0.9,-2 2,-2z" />
+    <!-- Tia sét Ghi nhanh phẳng Cyan -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M69.5,55.5 L61.5,66.5 L66.8,66.5 L65.0,75.0 L73.5,63.8 L68.2,63.8 Z" />
 </vector>
