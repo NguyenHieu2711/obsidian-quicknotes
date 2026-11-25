@@ -1473,4 +1473,173 @@ body.keyboard-open .bottom-bar {
   font-family: inherit;
 }
 
+/* ==========================================================================
+   NOTION WEB BOOKMARK CARD (HORIZONTAL MINIMALIST EMBED)
+   ========================================================================== */
+.ne-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.quick-item.bookmark-only .nb-stack,
+.note-entry.bookmark-only .nb-stack,
+.ne-child .nb-stack {
+  margin-top: 0;
+}
+
+.quick-item.bookmark-only {
+  padding: 8px 10px 8px 12px;
+  align-items: center;
+}
+
+.quick-item.bookmark-only .item-lead-dot {
+  margin-top: 0;
+}
+
+.quick-item.bookmark-only .item-lead-star {
+  margin-top: 0;
+}
+
+.note-entry.bookmark-only {
+  padding: 7px 9px 7px 11px;
+}
+
+.note-entry.bookmark-only .ne-lead-row {
+  align-items: center;
+}
+
+.note-entry.bookmark-only .item-lead-dot,
+.note-entry.bookmark-only .item-lead-star {
+  margin-top: 0;
+}
+
+.stream-list.chat-mode .note-entry.has-bookmark {
+  width: 100%;
+  max-width: 96%;
+}
+
+.notion-bookmark-card {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 76px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.14s ease, transform 0.12s ease;
+}
+
+body.theme-light .notion-bookmark-card {
+  background: #f8fafc;
+}
+
+.notion-bookmark-card:active {
+  border-color: var(--accent);
+  transform: scale(0.988);
+}
+
+.nb-body {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.nb-title {
+  font-size: 13.4px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.nb-desc {
+  font-size: 11.8px;
+  line-height: 1.32;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-desc.nb-loading {
+  opacity: 0.7;
+}
+
+.nb-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.nb-favicon {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.nb-site {
+  font-size: 11.2px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-thumb {
+  width: 96px;
+  min-height: 76px;
+  flex-shrink: 0;
+  background: var(--bg-canvas);
+  border-left: 1px solid var(--border-soft);
+  position: relative;
+  overflow: hidden;
+}
+
+.nb-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.nb-thumb.is-empty {
+  width: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg-canvas);
+}
+
+.ne-child-txt {
+  font-size: 13.8px;
+  line-height: 1.4;
+}
+
+
 

@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.4.0",
+    appVersion: "1.5.0",
 
     quickItems: [],
     noteStreams: [],
@@ -55,7 +55,8 @@
     focusTasks: [],
     warehouseRawLines: [],
     warehouseTasks: [],
-    vaultTags: ["#ui-ux", "#macbook", "#học-tập", "#mua-sắm", "#ý-tưởng"]
+    vaultTags: ["#ui-ux", "#macbook", "#học-tập", "#mua-sắm", "#ý-tưởng"],
+    linkPreviews: {}
   };
 
   const els = {
@@ -156,6 +157,231 @@
     }
     const safe = escHtml(str);
     return starHtml + safe.replace(/(#[\p{L}\p{N}_/-]+)/gu, '<span class="tag-pill">$1</span>');
+  }
+
+  // =========================================================================
+  // NOTION WEB BOOKMARK CARDS & SHARED METADATA CACHE
+  // =========================================================================
+  const pendingPreviewUrls = new Set();
+  const MD_LINK_GLOBAL_RE = /\[([^\]]+)\]\((?:<([^>\s]+)>|(https?:\/\/[^\s)]+))(?:\s+"[^"]*")?\)/g;
+  const RAW_URL_GLOBAL_RE = /https?:\/\/[^\s<>()]+/g;
+
+  try {
+    const savedPreviews = JSON.parse(localStorage.getItem("oq_link_previews") || "{}");
+    if (savedPreviews && typeof savedPreviews === "object") {
+      state.linkPreviews = savedPreviews;
+    }
+  } catch (_) {}
+
+  function persistLocalLinkPreviews() {
+    try {
+      const keys = Object.keys(state.linkPreviews);
+      const compact = {};
+      const start = Math.max(0, keys.length - 180);
+      for (let i = start; i < keys.length; i++) compact[keys[i]] = state.linkPreviews[keys[i]];
+      localStorage.setItem("oq_link_previews", JSON.stringify(compact));
+    } catch (_) {}
+  }
+
+  function getLinkHost(url) {
+    try {
+      return new URL(url).hostname.replace(/^(www\.|m\.)/i, "") || url;
+    } catch (_) {
+      return String(url || "");
+    }
+  }
+
+  function getGoogleFavicon(url) {
+    const host = getLinkHost(url);
+    if (!host || host.includes("/")) return "";
+    return "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(host) + "&sz=64";
+  }
+
+  function cleanTrailingUrlPunct(u) {
+    return String(u || "").replace(/[.,;:!?]+$/, "");
+  }
+
+  function parseNoteContentParts(raw) {
+    let str = String(raw || "");
+    const starred = /^★\s*/.test(str);
+    if (starred) str = str.replace(/^★\s*/, "");
+
+    const links = [];
+    const seen = new Set();
+    let stripped = str.replace(MD_LINK_GLOBAL_RE, (full, label, angleUrl, plainUrl) => {
+      const url = cleanTrailingUrlPunct(angleUrl || plainUrl || "");
+      if (!/^https?:\/\//i.test(url)) return full;
+      if (!seen.has(url)) {
+        seen.add(url);
+        links.push({ url: url, label: String(label || "").trim(), isRaw: false });
+      }
+      return " ";
+    });
+
+    stripped = stripped.replace(RAW_URL_GLOBAL_RE, (rawMatch) => {
+      const url = cleanTrailingUrlPunct(rawMatch);
+      const trail = rawMatch.slice(url.length);
+      if (!/^https?:\/\//i.test(url)) return rawMatch;
+      if (!seen.has(url)) {
+        seen.add(url);
+        links.push({ url: url, label: "", isRaw: true });
+      }
+      return trail ? (" " + trail) : " ";
+    });
+
+    const caption = stripped.replace(/\s+/g, " ").trim();
+    return { starred: starred, caption: caption, links: links };
+  }
+
+  function requestLinkPreview(url) {
+    if (!url || pendingPreviewUrls.has(url)) return;
+    const cached = state.linkPreviews[url];
+    const host = getLinkHost(url);
+    if (cached && (cached.image || cached.description || (cached.title && cached.title !== host))) {
+      return;
+    }
+    if (hasNative && window.AndroidBridge.fetchLinkPreview) {
+      pendingPreviewUrls.add(url);
+      try {
+        window.AndroidBridge.fetchLinkPreview(url);
+      } catch (_) {
+        pendingPreviewUrls.delete(url);
+      }
+    }
+  }
+
+  function buildNotionBookmarkHtml(link) {
+    const url = link.url;
+    const host = getLinkHost(url);
+    const meta = state.linkPreviews[url] || null;
+    if (!meta) requestLinkPreview(url);
+
+    const hasRealLabel = link.label && link.label.toLowerCase() !== "embed";
+    const title = (meta && meta.title) ? meta.title : (hasRealLabel ? link.label : host);
+    const desc = (meta && meta.description) ? meta.description : "";
+    const site = (meta && meta.site) ? meta.site : host;
+    const image = (meta && meta.image) ? meta.image : "";
+    const favicon = (meta && meta.favicon) ? meta.favicon : getGoogleFavicon(url);
+    const initial = (site || host || "L").trim().slice(0, 1).toUpperCase();
+
+    const descHtml = desc
+      ? '<div class="nb-desc">' + escHtml(desc) + "</div>"
+      : (!meta ? '<div class="nb-desc nb-loading">' + escHtml(url.replace(/^https?:\/\//i, "")) + "</div>" : "");
+
+    const thumbHtml = image
+      ? '<div class="nb-thumb" data-initial="' + escHtml(initial) + '"><img src="' + escHtml(image) + '" loading="lazy" referrerpolicy="no-referrer" onerror="var p=this.parentElement;this.remove();if(p){p.classList.add(\'is-empty\');p.textContent=p.dataset.initial||\'L\';}" /></div>'
+      : '<div class="nb-thumb is-empty">' + escHtml(initial) + "</div>";
+
+    const favHtml = favicon
+      ? '<img class="nb-favicon" src="' + escHtml(favicon) + '" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'" />'
+      : "";
+
+    return (
+      '<div class="notion-bookmark-card" data-open-url="' + escHtml(url) + '">' +
+        '<div class="nb-body">' +
+          '<div class="nb-title">' + escHtml(title) + "</div>" +
+          descHtml +
+          '<div class="nb-meta">' + favHtml + '<span class="nb-site">' + escHtml(site) + "</span></div>" +
+        "</div>" +
+        thumbHtml +
+      "</div>"
+    );
+  }
+
+  function renderRichContentBlock(rawText, hideStarPrefix, textClass) {
+    const parts = parseNoteContentParts(rawText);
+    if (parts.links.length === 0) {
+      return {
+        hasBookmark: false,
+        bookmarkOnly: false,
+        html: '<div class="' + textClass + '">' + formatRichText(rawText, hideStarPrefix) + "</div>"
+      };
+    }
+    const captionWithStar = (parts.starred && !hideStarPrefix) ? ("★ " + parts.caption) : parts.caption;
+    const captionHtml = parts.caption
+      ? '<div class="' + textClass + '">' + formatRichText(captionWithStar, hideStarPrefix) + "</div>"
+      : "";
+    const cardsHtml = '<div class="nb-stack">' + parts.links.map(buildNotionBookmarkHtml).join("") + "</div>";
+    return {
+      hasBookmark: true,
+      bookmarkOnly: !parts.caption,
+      html: captionHtml + cardsHtml
+    };
+  }
+
+  function openBookmarkUrl(url) {
+    if (!url) return;
+    vibrate(8);
+    if (hasNative && window.AndroidBridge.openExternalUrl) {
+      try {
+        window.AndroidBridge.openExternalUrl(url);
+        return;
+      } catch (_) {}
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function escapeMdLabel(title) {
+    return String(title || "")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\[/g, "(")
+      .replace(/\]/g, ")")
+      .trim()
+      .slice(0, 120);
+  }
+
+  function upgradeRawUrlInString(text, targetUrl, title) {
+    const safeTitle = escapeMdLabel(title);
+    if (!safeTitle) return { changed: false, next: text };
+    const host = getLinkHost(targetUrl);
+    if (safeTitle === targetUrl || safeTitle.toLowerCase() === host.toLowerCase()) {
+      return { changed: false, next: text };
+    }
+    // Skip if already wrapped as Markdown link [..](targetUrl) or (<targetUrl>)
+    if (text.includes("](" + targetUrl + ")") || text.includes("](<" + targetUrl + ">")) {
+      return { changed: false, next: text };
+    }
+    let changed = false;
+    const next = text.replace(RAW_URL_GLOBAL_RE, (m) => {
+      const clean = cleanTrailingUrlPunct(m);
+      if (clean === targetUrl) {
+        changed = true;
+        const trail = m.slice(clean.length);
+        return "[" + safeTitle + "](" + clean + ")" + trail;
+      }
+      return m;
+    });
+    return { changed: changed, next: next };
+  }
+
+  function maybeUpgradeRawUrlsInVault(url, title) {
+    if (!url || !title) return;
+    let dirty = false;
+    const editingItem = activeFocusEdit ? activeFocusEdit.item : null;
+
+    const processList = (list) => {
+      for (const it of list) {
+        if (it === editingItem) continue;
+        const r = upgradeRawUrlInString(it.text || "", url, title);
+        if (r.changed) {
+          it.text = r.next;
+          dirty = true;
+        }
+        if (Array.isArray(it.children)) {
+          for (let i = 0; i < it.children.length; i++) {
+            const rc = upgradeRawUrlInString(it.children[i] || "", url, title);
+            if (rc.changed) {
+              it.children[i] = rc.next;
+              dirty = true;
+            }
+          }
+        }
+      }
+    };
+
+    processList(state.quickItems);
+    for (const st of state.noteStreams) processList(st.items);
+    if (dirty) persistQuickNotes();
   }
 
   function applyTheme() {
@@ -394,6 +620,13 @@
             }).filter((t) => t.length > 1);
           }
         } catch (_) {}
+        try {
+          const parsedPreviews = JSON.parse(raw.linkPreviewsJson || "{}");
+          if (parsedPreviews && typeof parsedPreviews === "object") {
+            state.linkPreviews = Object.assign({}, state.linkPreviews, parsedPreviews);
+            persistLocalLinkPreviews();
+          }
+        } catch (_) {}
       } catch (_) {}
     } else {
       state.vaultConnected = true;
@@ -480,14 +713,16 @@
       const leadMarker = starred
         ? '<span class="item-lead-star">' + ICONS.starFill + "</span>"
         : '<span class="item-lead-dot"></span>';
+      const content = renderRichContentBlock(it.text, true, "qi-text");
       const childrenHtml = (it.children && it.children.length)
-        ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + formatRichText(c) + "</div>").join("") + "</div>"
+        ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + renderRichContentBlock(c, false, "ne-child-txt").html + "</div>").join("") + "</div>"
         : "";
+      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly ? " bookmark-only" : "");
       return (
-        '<div class="quick-item" data-id="' + it.id + '">' +
+        '<div class="quick-item' + bmClass + '" data-id="' + it.id + '">' +
           leadMarker +
           '<div class="qi-body" data-edit-quick="' + it.id + '">' +
-            '<div class="qi-text">' + formatRichText(it.text, true) + "</div>" +
+            content.html +
             childrenHtml +
           "</div>" +
         "</div>"
@@ -531,14 +766,16 @@
       const leadMarker = starred
         ? '<span class="item-lead-star">' + ICONS.starFill + "</span>"
         : '<span class="item-lead-dot"></span>';
+      const content = renderRichContentBlock(it.text, true, "ne-text");
       const subHtml = (it.children && it.children.length)
-        ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + formatRichText(c) + "</div>").join("") + "</div>"
+        ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + renderRichContentBlock(c, false, "ne-child-txt").html + "</div>").join("") + "</div>"
         : "";
+      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly ? " bookmark-only" : "");
       return (
-        '<div class="note-entry" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
+        '<div class="note-entry' + bmClass + '" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
           '<div class="ne-lead-row">' +
             leadMarker +
-            '<div class="ne-text">' + formatRichText(it.text, true) + "</div>" +
+            '<div class="ne-content-col">' + content.html + "</div>" +
           "</div>" +
           subHtml +
         "</div>"
@@ -1516,6 +1753,12 @@
 
   els.quickList.addEventListener("click", (e) => {
     if (Date.now() < suppressClickUntil) return;
+    const bmCard = e.target.closest(".notion-bookmark-card");
+    if (bmCard) {
+      e.stopPropagation();
+      openBookmarkUrl(bmCard.getAttribute("data-open-url"));
+      return;
+    }
     const card = e.target.closest(".quick-item");
     if (card) {
       const item = state.quickItems.find((x) => x.id === card.getAttribute("data-id"));
@@ -1533,6 +1776,12 @@
       localStorage.setItem("oq_active_stream", state.activeStreamId);
       vibrate(8);
       renderAll();
+      return;
+    }
+    const bmCard = e.target.closest(".notion-bookmark-card");
+    if (bmCard) {
+      e.stopPropagation();
+      openBookmarkUrl(bmCard.getAttribute("data-open-url"));
       return;
     }
     const entryEl = e.target.closest(".note-entry");
@@ -1637,6 +1886,19 @@
     }
   });
 
+  window.__onLinkPreviewLoaded = (url, dataJsonStr) => {
+    if (!url) return;
+    pendingPreviewUrls.delete(url);
+    try {
+      const data = typeof dataJsonStr === "string" ? JSON.parse(dataJsonStr) : dataJsonStr;
+      if (!data || typeof data !== "object") return;
+      state.linkPreviews[url] = data;
+      persistLocalLinkPreviews();
+      if (data.title) maybeUpgradeRawUrlsInVault(url, data.title);
+      renderQuickTab();
+      renderNotesTab();
+    } catch (_) {}
+  };
   window.__onVoiceState = (listening) => els.btnVoice.classList.toggle("listening", !!listening);
   window.__onVoiceText = (txt) => {
     if (!txt) return;

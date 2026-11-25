@@ -283,12 +283,28 @@ private class NotesRemoteViewsFactory(
 
     override fun getCount(): Int = items.size
 
+    private fun formatWidgetNoteText(raw: String): String {
+        val mdLinkRe = Regex("""\[([^\]]+)\]\((?:<([^>\s]+)>|([^\s)]+))(?:\s+"[^"]*")?\)""")
+        val replaced = mdLinkRe.replace(raw) { m ->
+            val label = m.groupValues[1].trim()
+            val url = m.groupValues[2].ifEmpty { m.groupValues[3] }.trim()
+            if (label.equals("Embed", ignoreCase = true) || label.isEmpty()) {
+                "🔗 ${LinkPreviewFetcher.extractHost(url)}"
+            } else {
+                "🔗 $label"
+            }
+        }
+        return replaced.replace(Regex("""https?://[^\s<>()]+""")) { m ->
+            "🔗 ${LinkPreviewFetcher.extractHost(m.value)}"
+        }.trim()
+    }
+
     override fun getViewAt(position: Int): RemoteViews? {
         if (position !in items.indices) return null
         val item = items[position]
         val rv = RemoteViews(context.packageName, R.layout.widget_item_note)
 
-        rv.setTextViewText(R.id.wn_text, item.cleanText)
+        rv.setTextViewText(R.id.wn_text, formatWidgetNoteText(item.cleanText))
 
         if (item.isUnassigned) {
             rv.setTextViewText(R.id.wn_group_chip, "+ Gắn nhóm")

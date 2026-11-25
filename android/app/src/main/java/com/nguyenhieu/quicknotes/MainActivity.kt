@@ -172,6 +172,9 @@ class MainActivity : AppCompatActivity() {
                 displayZoomControls = false
                 useWideViewPort = true
                 loadWithOverviewMode = true
+                loadsImagesAutomatically = true
+                blockNetworkImage = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             }
 
             addJavascriptInterface(AndroidWebBridge(), "AndroidBridge")
@@ -628,8 +631,56 @@ class MainActivity : AppCompatActivity() {
                 put("dailyAnchorJson", VaultRepository.readDailyAnchorJson(this@MainActivity))
                 put("taskWarehouseMd", VaultRepository.readTaskWarehouseMd(this@MainActivity))
                 put("tagsJson", VaultRepository.readVaultTagsJson(this@MainActivity))
+                put("linkPreviewsJson", VaultRepository.readLinkPreviewsJson(this@MainActivity))
             }
             return obj.toString()
+        }
+
+        @JavascriptInterface
+        fun getLinkPreviewsJson(): String {
+            return VaultRepository.readLinkPreviewsJson(this@MainActivity)
+        }
+
+        @JavascriptInterface
+        fun fetchLinkPreview(rawUrl: String) {
+            val url = rawUrl.trim()
+            if (url.isEmpty()) return
+            lifecycleScope.launch(Dispatchers.IO) {
+                val cached = VaultRepository.readLinkPreviewCached(this@MainActivity, url)
+                val data = if (cached != null && (cached.optString("image", "").isNotBlank() || cached.optString("description", "").isNotBlank() || cached.optString("title", "") != LinkPreviewFetcher.extractHost(url))) {
+                    cached
+                } else {
+                    val fetched = LinkPreviewFetcher.fetch(url)
+                    VaultRepository.upsertLinkPreview(this@MainActivity, url, fetched)
+                    fetched
+                }
+                val uEsc = JSONObject.quote(url)
+                val dEsc = JSONObject.quote(data.toString())
+                withContext(Dispatchers.Main) {
+                    if (::webView.isInitialized && !isDestroyed) {
+                        webView.evaluateJavascript(
+                            "window.__onLinkPreviewLoaded && window.__onLinkPreviewLoaded($uEsc, $dEsc);",
+                            null
+                        )
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openExternalUrl(rawUrl: String) {
+            val url = rawUrl.trim()
+            if (url.isEmpty()) return
+            runOnUiThread {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(this@MainActivity, "Không thể mở liên kết này.", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         @JavascriptInterface

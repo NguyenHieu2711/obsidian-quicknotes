@@ -23,6 +23,7 @@ object VaultRepository {
     private val memCache = ConcurrentHashMap<String, String>()
     private val lastWrittenGroupFiles = ConcurrentHashMap<String, String>()
     private val safWriteExecutor = Executors.newSingleThreadExecutor()
+    private val previewWarmExecutor = Executors.newCachedThreadPool()
 
     const val PREFS_NAME = "obsidian_quick_prefs"
     const val KEY_VAULT_PATH = "vault_fs_path"
@@ -35,6 +36,7 @@ object VaultRepository {
     const val REL_DAILY_ANCHOR = "9. System/99. Nhà kho chứa Scripts Dataview/Backup/daily-focus-anchor.json"
     const val REL_TASK_WAREHOUSE = "1. Actions/📁 0. Kế hoạch & Lịch trình/✅ Nhà kho chứa Task.md"
     const val REL_TAGS_INDEX = ".obsidian/plugins/.quicknotes-sync/tags-index.json"
+    const val REL_LINK_PREVIEWS = ".obsidian/plugins/.quicknotes-sync/link-previews.json"
 
     private val DEFAULT_QUICK_NOTES_MD = """
         # ⚡ Ghi nhanh
@@ -800,6 +802,52 @@ object VaultRepository {
         }
     }
 
+    @Synchronized
+    fun readLinkPreviewsJson(context: Context): String {
+        val raw = readRelFile(context, REL_LINK_PREVIEWS, "{}").trim()
+        return if (raw.startsWith("{")) raw else "{}"
+    }
+
+    @Synchronized
+    fun readLinkPreviewCached(context: Context, url: String): JSONObject? {
+        return try {
+            val root = JSONObject(readLinkPreviewsJson(context))
+            val obj = root.optJSONObject(url) ?: return null
+            if (obj.optString("title", "").isNotBlank()) obj else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @Synchronized
+    fun upsertLinkPreview(context: Context, url: String, preview: JSONObject) {
+        try {
+            val root = try {
+                JSONObject(readLinkPreviewsJson(context))
+            } catch (_: Exception) {
+                JSONObject()
+            }
+            root.put(url, preview)
+            // Cap cache at 250 entries to keep Syncthing sync super light
+            if (root.length() > 250) {
+                val entries = mutableListOf<Pair<String, Long>>()
+                val it = root.keys()
+                while (it.hasNext()) {
+                    val k = it.next()
+                    val ts = root.optJSONObject(k)?.optLong("fetchedAt", 0L) ?: 0L
+                    entries.add(Pair(k, ts))
+                }
+                entries.sortBy { it.second }
+                val toDrop = entries.size - 240
+                for (i in 0 until toDrop) {
+                    root.remove(entries[i].first)
+                }
+            }
+            writeRelFileOptimistic(context, REL_LINK_PREVIEWS, root.toString())
+        } catch (_: Exception) {
+        }
+    }
+
     fun listActiveNoteStreams(context: Context): List<Pair<String, String>> {
         val md = readQuickNotesMd(context)
         val result = mutableListOf<Pair<String, String>>()
@@ -829,6 +877,28 @@ object VaultRepository {
         return result
     }
 
+    private fun warmLinkPreviewsInBackground(context: Context, text: String) {
+        val urlRegex = Regex("""https?://[^\s<>()]+""")
+        val urls = urlRegex.findAll(text)
+            .map { it.value.trimEnd('.', ',', ';', ':', '!', '?') }
+            .distinct()
+            .take(3)
+            .toList()
+        if (urls.isEmpty()) return
+        val appCtx = context.applicationContext
+        previewWarmExecutor.execute {
+            for (u in urls) {
+                try {
+                    val existing = readLinkPreviewCached(appCtx, u)
+                    if (existing != null && existing.optString("image", "").isNotBlank()) continue
+                    val fetched = LinkPreviewFetcher.fetch(u)
+                    upsertLinkPreview(appCtx, u, fetched)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
     fun appendCaptureItem(
         context: Context,
         rawText: String,
@@ -837,6 +907,7 @@ object VaultRepository {
     ): Boolean {
         val clean = rawText.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
+        warmLinkPreviewsInBackground(context, clean)
         val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
         when (targetType) {
