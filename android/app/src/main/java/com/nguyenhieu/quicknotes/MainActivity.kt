@@ -621,18 +621,22 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getFullVaultState(): String {
             val (connected, label) = VaultRepository.getVaultDisplayStatus(this@MainActivity)
+            val quickNotesMd = VaultRepository.readQuickNotesMd(this@MainActivity)
+            val dailyAnchorJson = VaultRepository.readDailyAnchorJson(this@MainActivity)
+            val taskWarehouseMd = VaultRepository.readTaskWarehouseMd(this@MainActivity)
             val obj = JSONObject().apply {
                 put("connected", connected)
                 put("vaultLabel", label)
                 put("hasAllFilesAccess", VaultRepository.hasAllFilesAccess())
                 put("lastModified", VaultRepository.getLatestVaultModifiedTimestamp(this@MainActivity))
                 put("appVersion", getEffectiveWebVersion())
-                put("quickNotesMd", VaultRepository.readQuickNotesMd(this@MainActivity))
-                put("dailyAnchorJson", VaultRepository.readDailyAnchorJson(this@MainActivity))
-                put("taskWarehouseMd", VaultRepository.readTaskWarehouseMd(this@MainActivity))
+                put("quickNotesMd", quickNotesMd)
+                put("dailyAnchorJson", dailyAnchorJson)
+                put("taskWarehouseMd", taskWarehouseMd)
                 put("tagsJson", VaultRepository.readVaultTagsJson(this@MainActivity))
                 put("linkPreviewsJson", VaultRepository.readLinkPreviewsJson(this@MainActivity))
             }
+            DualWidgetContract.refreshAllWidgets(this@MainActivity)
             return obj.toString()
         }
 

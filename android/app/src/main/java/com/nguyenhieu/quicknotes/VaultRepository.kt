@@ -306,14 +306,18 @@ object VaultRepository {
 
     fun readRelFileFastMirror(context: Context, relPath: String, fallbackContent: String): String {
         memCache[relPath]?.let { return it }
+        // Cold start: read live Vault first (FS takes <1ms) so widgets never get stuck on stale/empty mirror
+        val live = readRelFile(context, relPath, "")
+        if (live.isNotBlank()) return live
         val mf = File(mirrorDir(context), relPath)
         if (mf.exists() && mf.isFile) {
-            return try {
+            try {
                 val txt = mf.readText(Charsets.UTF_8)
-                memCache[relPath] = txt
-                txt
+                if (txt.isNotBlank()) {
+                    memCache[relPath] = txt
+                    return txt
+                }
             } catch (_: Exception) {
-                fallbackContent
             }
         }
         return readRelFile(context, relPath, fallbackContent)
@@ -393,19 +397,29 @@ object VaultRepository {
             var notesChanged = false
             var tasksChanged = false
             for (rel in relPaths) {
-                val prev = memCache[rel]
+                val prevMem = memCache[rel]
+                val prevMirror = if (prevMem != null) {
+                    prevMem
+                } else {
+                    try {
+                        val mf = File(mirrorDir(appCtx), rel)
+                        if (mf.exists() && mf.isFile) mf.readText(Charsets.UTF_8) else null
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
                 val fresh = when (rel) {
                     REL_QUICK_NOTES -> readQuickNotesMd(appCtx)
                     REL_DAILY_ANCHOR -> readRelFile(appCtx, rel, DEFAULT_DAILY_ANCHOR_JSON)
                     REL_TASK_WAREHOUSE -> readRelFile(appCtx, rel, DEFAULT_TASK_WAREHOUSE_MD)
                     else -> continue
                 }
-                if (prev != null && prev != fresh) {
+                if (prevMirror != fresh && (prevMirror != null || fresh.isNotBlank())) {
                     if (rel == REL_QUICK_NOTES) notesChanged = true else tasksChanged = true
                 }
             }
-            if (notesChanged) DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
-            if (tasksChanged) DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_TASKS)
+            if (notesChanged) DualWidgetContract.refreshWidgets(appCtx, DualWidgetContract.KIND_NOTES)
+            if (tasksChanged) DualWidgetContract.refreshWidgets(appCtx, DualWidgetContract.KIND_TASKS)
         }
     }
 
@@ -733,7 +747,11 @@ object VaultRepository {
         return readRelFile(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
     }
 
-    fun readQuickNotesMdFast(context: Context): String = readRelFileFastMirror(context, REL_QUICK_NOTES, DEFAULT_QUICK_NOTES_MD)
+    fun readQuickNotesMdFast(context: Context): String {
+        memCache[REL_QUICK_NOTES]?.let { return it }
+        // Cold widget start must read the live multi-file folder `0. Inbox/⚡ Ghi nhanh/*.md`, not just legacy Quick Notes.md
+        return readQuickNotesMd(context)
+    }
 
     fun saveQuickNotesMd(context: Context, md: String): Boolean {
         val appCtx = context.applicationContext

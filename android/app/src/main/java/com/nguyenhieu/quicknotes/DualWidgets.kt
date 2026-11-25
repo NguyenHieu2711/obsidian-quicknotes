@@ -111,9 +111,27 @@ object DualWidgetContract {
         }
     }
 
+    fun refreshWidgets(context: Context, kind: String? = null) {
+        val appCtx = context.applicationContext
+        val mgr = AppWidgetManager.getInstance(appCtx)
+        if (kind == null || kind == KIND_NOTES) {
+            val ids = mgr.getAppWidgetIds(android.content.ComponentName(appCtx, NotesWidgetProvider::class.java))
+            if (ids.isNotEmpty()) {
+                NotesWidgetProvider().onUpdate(appCtx, mgr, ids)
+                mgr.notifyAppWidgetViewDataChanged(ids, R.id.w_notes_list)
+            }
+        }
+        if (kind == null || kind == KIND_TASKS) {
+            val ids = mgr.getAppWidgetIds(android.content.ComponentName(appCtx, TasksWidgetProvider::class.java))
+            if (ids.isNotEmpty()) {
+                TasksWidgetProvider().onUpdate(appCtx, mgr, ids)
+                mgr.notifyAppWidgetViewDataChanged(ids, R.id.w_tasks_list)
+            }
+        }
+    }
+
     fun refreshAllWidgets(context: Context) {
-        refreshListOnly(context, KIND_NOTES)
-        refreshListOnly(context, KIND_TASKS)
+        refreshWidgets(context, null)
     }
 }
 
@@ -184,7 +202,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_NOTES)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_FILTER_GROUP)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://notes_grp/$widgetId")
             }
             views.setOnClickPendingIntent(
@@ -591,4 +609,21 @@ private class TasksRemoteViewsFactory(
     override fun getViewTypeCount(): Int = 1
     override fun getItemId(position: Int): Long = items.getOrNull(position)?.uid?.hashCode()?.toLong() ?: position.toLong()
     override fun hasStableIds(): Boolean = true
+}
+
+class WidgetPackageUpdateReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val appCtx = context.applicationContext
+            DualWidgetContract.refreshAllWidgets(appCtx)
+            VaultRepository.syncFromExternalVaultAsync(
+                appCtx,
+                listOf(
+                    VaultRepository.REL_QUICK_NOTES,
+                    VaultRepository.REL_DAILY_ANCHOR,
+                    VaultRepository.REL_TASK_WAREHOUSE
+                )
+            )
+        }
+    }
 }

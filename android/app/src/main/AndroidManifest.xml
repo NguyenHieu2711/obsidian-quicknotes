@@ -71,11 +71,20 @@
         <activity
             android:name=".WidgetActionActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:taskAffinity=""
+            android:taskAffinity="com.nguyenhieu.quicknotes.widget_dialog"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.ObsidianQuick.WidgetDialog" />
+
+        <receiver
+            android:name=".WidgetPackageUpdateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- WIDGET 1: OBSIDIAN · QUICK NOTES -->
         <receiver
