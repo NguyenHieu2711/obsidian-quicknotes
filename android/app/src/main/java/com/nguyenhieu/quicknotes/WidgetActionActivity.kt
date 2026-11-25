@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
@@ -12,8 +13,11 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.text.InputType
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -132,13 +136,16 @@ class WidgetActionActivity : Activity() {
     private fun mountBottomCard(card: LinearLayout, openKeyboardFor: EditText? = null) {
         setContentView(card)
         window?.apply {
+            clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
             setLayout(
                 (resources.displayMetrics.widthPixels * 0.94f).toInt(),
                 WindowManager.LayoutParams.WRAP_CONTENT
             )
             setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             val lp = attributes
+            lp.x = 0
             lp.y = dp(14)
+            lp.dimAmount = 0.32f
             attributes = lp
             statusBarColor = Color.TRANSPARENT
             navigationBarColor = Color.TRANSPARENT
@@ -394,8 +401,141 @@ class WidgetActionActivity : Activity() {
         mountBottomCard(card, openKeyboardFor = editBox)
     }
 
+    private fun makeDropdownCard(): LinearLayout {
+        val bg = GradientDrawable().apply {
+            setColor(Color.parseColor("#181C24"))
+            setStroke(dp(1), Color.parseColor("#2D3546"))
+            cornerRadius = dp(14).toFloat()
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = bg
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+    }
+
+    private fun makeDropdownRow(
+        title: String,
+        badge: String = "",
+        selected: Boolean = false,
+        accentHex: String = "#38BDF8",
+        isLast: Boolean = false,
+        onClick: () -> Unit
+    ): LinearLayout {
+        val bg = GradientDrawable().apply {
+            setColor(if (selected) Color.parseColor("#222B3C") else Color.TRANSPARENT)
+            if (selected) setStroke(dp(1), Color.parseColor(accentHex))
+            cornerRadius = dp(9).toFloat()
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = bg
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.bottomMargin = if (isLast) 0 else dp(2)
+            layoutParams = lp
+
+            val tvTitle = TextView(this@WidgetActionActivity).apply {
+                text = if (selected) "✓  $title" else title
+                textSize = 13f
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setTextColor(if (selected) Color.parseColor(accentHex) else Color.parseColor("#EDF1F8"))
+                paint.isFakeBoldText = selected
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            addView(tvTitle)
+
+            if (badge.isNotEmpty()) {
+                val tvBadge = TextView(this@WidgetActionActivity).apply {
+                    text = badge
+                    textSize = 11f
+                    setPadding(dp(8), 0, 0, 0)
+                    setTextColor(Color.parseColor("#7D89A3"))
+                }
+                addView(tvBadge)
+            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun mountAnchoredDropdown(card: LinearLayout) {
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val bounds: Rect? = intent?.sourceBounds
+
+        var statusTop = 0
+        var navBottom = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val insets = windowManager.currentWindowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            statusTop = insets.top
+            navBottom = insets.bottom
+        } else {
+            val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resId > 0) statusTop = resources.getDimensionPixelSize(resId)
+        }
+
+        val dropdownW = if (bounds != null && bounds.width() > 0) {
+            (bounds.width() + dp(36)).coerceIn(dp(205), dp(260)).coerceAtMost(screenW - dp(24))
+        } else {
+            dp(225).coerceAtMost(screenW - dp(24))
+        }
+
+        val maxAvailH = (screenH - statusTop - navBottom - dp(24)).coerceAtLeast(dp(120))
+        card.measure(
+            View.MeasureSpec.makeMeasureSpec(dropdownW, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(maxAvailH, View.MeasureSpec.AT_MOST)
+        )
+        val menuH = card.measuredHeight.coerceAtLeast(dp(56))
+
+        val targetX = if (bounds != null && bounds.left > 0) {
+            bounds.left.coerceIn(dp(12), (screenW - dropdownW - dp(12)).coerceAtLeast(dp(12)))
+        } else {
+            dp(16)
+        }
+
+        val targetY = if (bounds != null && bounds.bottom > 0) {
+            val spaceBelow = (screenH - navBottom) - bounds.bottom - dp(10)
+            val spaceAbove = bounds.top - statusTop - dp(10)
+            if (menuH <= spaceBelow || spaceBelow >= spaceAbove) {
+                (bounds.bottom + dp(4)).coerceIn(
+                    statusTop + dp(8),
+                    (screenH - navBottom - menuH - dp(8)).coerceAtLeast(statusTop + dp(8))
+                )
+            } else {
+                (bounds.top - menuH - dp(4)).coerceAtLeast(statusTop + dp(8))
+            }
+        } else {
+            statusTop + dp(72)
+        }
+
+        setContentView(card)
+        window?.apply {
+            addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+            setLayout(dropdownW, WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.TOP or Gravity.START)
+            val lp = attributes
+            lp.x = targetX
+            lp.y = targetY
+            lp.dimAmount = 0.10f
+            attributes = lp
+            statusBarColor = Color.TRANSPARENT
+            navigationBarColor = Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                isStatusBarContrastEnforced = false
+                isNavigationBarContrastEnforced = false
+            }
+        }
+    }
+
     // =========================================================================
-    // SHEET 2: WIDGET GROUP FILTER PICKER (PARTIAL HEADER + LIST UPDATE)
+    // SHEET 2: WIDGET GROUP FILTER DROPDOWN (COMPACT, ANCHORED UNDER BUTTON)
     // =========================================================================
     private fun renderGroupFilterSheet(widgetKind: String, widgetId: Int) {
         val isTask = widgetKind == DualWidgetContract.KIND_TASKS
@@ -407,28 +547,19 @@ class WidgetActionActivity : Activity() {
             WidgetVaultHelper.listNoteGroups(this, fastMirror = true)
         }
 
-        val card = makeSheetCard()
-        card.addView(
-            TextView(this).apply {
-                text = if (isTask) "Lọc nhóm Task trên Widget" else "Lọc nhóm Notes trên Widget"
-                textSize = 15f
-                paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#F1F5F9"))
-                setPadding(0, 0, 0, dp(10))
-            }
-        )
-
+        val card = makeDropdownCard()
         val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        for (opt in options) {
-            val badge = if (opt.sectionHint.isNotEmpty()) "${opt.sectionHint} · ${opt.count}" else "${opt.count}"
+        for ((idx, opt) in options.withIndex()) {
+            val badge = "${opt.count}"
             listBox.addView(
-                makeOptionRow(
+                makeDropdownRow(
                     title = opt.label,
                     badge = badge,
                     selected = opt.key.equals(curFilter, ignoreCase = true),
-                    accentHex = accentHex
+                    accentHex = accentHex,
+                    isLast = idx == options.lastIndex
                 ) {
-                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
+                    if (!submitLock.compareAndSet(false, true)) return@makeDropdownRow
                     WidgetVaultHelper.setWidgetGroupFilter(applicationContext, widgetId, opt.key)
                     DualWidgetContract.refreshHeaderAndList(applicationContext, widgetKind, widgetId)
                     hapticTick()
@@ -437,51 +568,49 @@ class WidgetActionActivity : Activity() {
             )
         }
 
-        val scroll = ScrollView(this).apply {
+        val maxListH = (resources.displayMetrics.heightPixels * 0.42f).toInt().coerceIn(dp(140), dp(270))
+        val scroll = object : ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = MeasureSpec.makeMeasureSpec(maxListH, MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
             isVerticalScrollBarEnabled = false
             addView(listBox)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.52f).toInt().coerceAtMost(dp(380))
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
         card.addView(scroll)
-        mountBottomCard(card)
+        mountAnchoredDropdown(card)
     }
 
     // =========================================================================
-    // SHEET 3: WIDGET SORT PICKER (FALLBACK IF OPENED VIA SHEET)
+    // SHEET 3: WIDGET SORT PICKER (COMPACT DROPDOWN)
     // =========================================================================
     private fun renderSortPickerSheet(widgetKind: String, widgetId: Int) {
         val isTask = widgetKind == DualWidgetContract.KIND_TASKS
         val accentHex = if (isTask) "#A78BFA" else "#38BDF8"
         val curSort = WidgetVaultHelper.getWidgetSortMode(this, widgetId)
 
-        val card = makeSheetCard()
-        card.addView(
-            TextView(this).apply {
-                text = "Sắp xếp danh sách Widget"
-                textSize = 15f
-                paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#F1F5F9"))
-                setPadding(0, 0, 0, dp(10))
-            }
-        )
-
+        val card = makeDropdownCard()
         val modes = listOf(
             Triple(WidgetVaultHelper.SORT_NEWEST, "Mới nhất", "Mặc định"),
-            Triple(WidgetVaultHelper.SORT_NAME, "Theo tên (A → Z)", "Chữ cái"),
-            Triple(WidgetVaultHelper.SORT_STAR, "Theo sao (★ lên đầu)", "Ưu tiên")
+            Triple(WidgetVaultHelper.SORT_NAME, "Theo tên (A → Z)", ""),
+            Triple(WidgetVaultHelper.SORT_STAR, "Theo sao (★)", "")
         )
-        for ((key, title, hint) in modes) {
+        for ((idx, item) in modes.withIndex()) {
+            val (key, title, hint) = item
             card.addView(
-                makeOptionRow(
+                makeDropdownRow(
                     title = title,
                     badge = hint,
                     selected = curSort == key,
-                    accentHex = accentHex
+                    accentHex = accentHex,
+                    isLast = idx == modes.lastIndex
                 ) {
-                    if (!submitLock.compareAndSet(false, true)) return@makeOptionRow
+                    if (!submitLock.compareAndSet(false, true)) return@makeDropdownRow
                     WidgetVaultHelper.setWidgetSortMode(applicationContext, widgetId, key)
                     DualWidgetContract.refreshHeaderAndList(applicationContext, widgetKind, widgetId)
                     hapticTick()
@@ -489,7 +618,7 @@ class WidgetActionActivity : Activity() {
                 }
             )
         }
-        mountBottomCard(card)
+        mountAnchoredDropdown(card)
     }
 
     // =========================================================================

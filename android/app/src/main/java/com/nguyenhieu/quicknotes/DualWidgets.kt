@@ -196,7 +196,7 @@ class NotesWidgetProvider : AppWidgetProvider() {
                 DualWidgetContract.buildActivityPendingIntent(context, 10000 + widgetId, openAppIntent)
             )
 
-            // Group Filter picker
+            // Group Filter picker (mutableTemplate=true so Launcher attaches sourceBounds for anchored dropdown)
             val groupIntent = Intent(context, WidgetActionActivity::class.java).apply {
                 action = DualWidgetContract.ACTION_HEADER_CLICK
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
@@ -207,7 +207,12 @@ class NotesWidgetProvider : AppWidgetProvider() {
             }
             views.setOnClickPendingIntent(
                 R.id.w_notes_group_btn,
-                DualWidgetContract.buildActivityPendingIntent(context, 12000 + widgetId, groupIntent)
+                DualWidgetContract.buildActivityPendingIntent(
+                    context,
+                    12000 + widgetId,
+                    groupIntent,
+                    mutableTemplate = true
+                )
             )
 
             // Instant 0ms 1-tap Broadcast Sort cycle (Mới → Tên → Sao ★) — ZERO popup / ZERO Activity!
@@ -442,12 +447,17 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 putExtra(DualWidgetContract.EXTRA_WIDGET_ID, widgetId)
                 putExtra(DualWidgetContract.EXTRA_WIDGET_KIND, DualWidgetContract.KIND_TASKS)
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_FILTER_GROUP)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
                 data = Uri.parse("obsidianquick://tasks_grp/$widgetId")
             }
             views.setOnClickPendingIntent(
                 R.id.w_tasks_group_btn,
-                DualWidgetContract.buildActivityPendingIntent(context, 32000 + widgetId, groupIntent)
+                DualWidgetContract.buildActivityPendingIntent(
+                    context,
+                    32000 + widgetId,
+                    groupIntent,
+                    mutableTemplate = true
+                )
             )
 
             // Instant 0ms 1-tap Broadcast Sort cycle (Mới → Tên → Sao ★) — ZERO popup / ZERO Activity!
