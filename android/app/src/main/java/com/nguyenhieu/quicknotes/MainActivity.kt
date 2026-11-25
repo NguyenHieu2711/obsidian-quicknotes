@@ -448,17 +448,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun fetchFromGitHubReleasesApi(): Pair<String, String>? {
+        val apiUrl = "https://api.github.com/repos/${BuildConfig.GITHUB_REPO}/releases/latest"
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5000
+                readTimeout = 5000
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("User-Agent", "ObsidianQuick-Android/${BuildConfig.VERSION_NAME}")
+            }
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
+            val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            val tagName = json.optString("tag_name", "").trim()
+            if (tagName.isEmpty()) return null
+            val assets = json.optJSONArray("assets") ?: return null
+            var chosenUrl = ""
+            for (i in 0 until assets.length()) {
+                val asset = assets.optJSONObject(i) ?: continue
+                val name = asset.optString("name", "")
+                val url = asset.optString("browser_download_url", "")
+                if (name.endsWith(".apk", ignoreCase = true) && url.isNotEmpty()) {
+                    chosenUrl = url
+                    if (name.contains("obsidian-quick", ignoreCase = true)) break
+                }
+            }
+            if (chosenUrl.isEmpty()) null else Pair(tagName, chosenUrl)
+        } catch (_: Exception) {
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
     private suspend fun checkForUpdatesFromGitHub(manualCheck: Boolean) {
         val manifestJson = withContext(Dispatchers.IO) { fetchRawManifestJson() }
         val remoteWebVer = manifestJson?.optString("web_version", "")?.trim().orEmpty()
-        val tagName = manifestJson?.optString("tag_name", "")?.trim().orEmpty()
-        val apkUrl = manifestJson?.optString("apk_url", "")?.trim().orEmpty()
+        var releaseInfo: Pair<String, String>? = if (manifestJson != null) {
+            val t = manifestJson.optString("tag_name", "").trim()
+            val u = manifestJson.optString("apk_url", "").trim()
+            if (t.isNotEmpty() && u.isNotEmpty()) Pair(t, u) else null
+        } else {
+            null
+        }
+        if (releaseInfo == null) {
+            releaseInfo = withContext(Dispatchers.IO) { fetchFromGitHubReleasesApi() }
+        }
 
-        if (tagName.isNotEmpty() && apkUrl.isNotEmpty() && isRemoteVersionNewer(tagName, BuildConfig.VERSION_NAME)) {
-            if (manualCheck || !updatePromptDismissedThisSession) {
-                showMandatoryUpdateDialog(tagName, apkUrl)
+        if (releaseInfo != null) {
+            val (tagName, apkUrl) = releaseInfo
+            if (isRemoteVersionNewer(tagName, BuildConfig.VERSION_NAME)) {
+                if (manualCheck || !updatePromptDismissedThisSession) {
+                    showMandatoryUpdateDialog(tagName, apkUrl)
+                }
+                return
             }
-            return
         }
 
         if (remoteWebVer.isNotEmpty() && isRemoteVersionNewer(remoteWebVer, getEffectiveWebVersion())) {
@@ -471,7 +516,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (manualCheck) {
-            val msg = if (manifestJson == null) {
+            val msg = if (releaseInfo == null && manifestJson == null) {
                 "Không thể kiểm tra cập nhật lúc này."
             } else {
                 "Đang ở bản mới nhất (v${getEffectiveWebVersion()})."
