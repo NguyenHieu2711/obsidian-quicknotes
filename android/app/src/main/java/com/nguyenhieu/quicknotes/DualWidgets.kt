@@ -384,13 +384,14 @@ private class NotesRemoteViewsFactory(
     override fun getViewAt(position: Int): RemoteViews? {
         if (position !in items.indices) return null
         val item = items[position]
-        val rv = RemoteViews(context.packageName, R.layout.widget_item_note)
 
         val extracted = extractFirstLink(item.cleanText)
+        val layoutRes = if (extracted == null) R.layout.widget_item_note else R.layout.widget_item_note_embed
+        val rv = RemoteViews(context.packageName, layoutRes)
+
         if (extracted == null) {
             rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
             rv.setTextViewText(R.id.wn_text, item.cleanText)
-            rv.setViewVisibility(R.id.wn_embed_card, View.GONE)
         } else {
             val surrounding = formatWidgetNoteText(extracted.surroundingText)
             if (surrounding.isNotEmpty()) {
@@ -414,7 +415,6 @@ private class NotesRemoteViewsFactory(
             val imgUrl = pObj?.optString("image", "")?.trim().orEmpty()
             val favUrl = pObj?.optString("favicon", "")?.trim().orEmpty().ifEmpty { LinkPreviewFetcher.googleFaviconUrl(extracted.url) }
 
-            rv.setViewVisibility(R.id.wn_embed_card, View.VISIBLE)
             rv.setTextViewText(R.id.wn_embed_title, cardTitle)
             if (cardDesc.isNotEmpty()) {
                 rv.setViewVisibility(R.id.wn_embed_desc, View.VISIBLE)
@@ -452,9 +452,6 @@ private class NotesRemoteViewsFactory(
             rv.setInt(R.id.wn_group_chip, "setBackgroundResource", R.drawable.widget_tag_chip_neutral_bg)
         }
 
-        // Hide timestamp for ultra-clean card
-        rv.setViewVisibility(R.id.wn_time, View.GONE)
-
         rv.setImageViewResource(
             R.id.wn_star,
             if (item.starred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off
@@ -464,8 +461,11 @@ private class NotesRemoteViewsFactory(
             putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_NOTE)
             putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
         }
+        rv.setOnClickFillInIntent(R.id.wn_bubble_box, editFillIntent)
         rv.setOnClickFillInIntent(R.id.wn_text, editFillIntent)
-        rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
+        if (extracted != null) {
+            rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
+        }
         rv.setOnClickFillInIntent(
             R.id.wn_group_chip,
             Intent().apply {
@@ -485,7 +485,7 @@ private class NotesRemoteViewsFactory(
     }
 
     override fun getLoadingView(): RemoteViews? = null
-    override fun getViewTypeCount(): Int = 1
+    override fun getViewTypeCount(): Int = 2
     override fun getItemId(position: Int): Long = items.getOrNull(position)?.uid?.hashCode()?.toLong() ?: position.toLong()
     override fun hasStableIds(): Boolean = true
 }

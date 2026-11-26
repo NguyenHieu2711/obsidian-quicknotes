@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.5.7",
+    appVersion: "1.5.8",
 
     quickItems: [],
     noteStreams: [],
@@ -718,6 +718,7 @@
   }
 
   function renderQuickTab() {
+    els.quickList.classList.toggle("chat-mode", state.notesDisplayMode === "chat");
     const items = state.quickItems.filter((it) => matchesQuery(it.text, it.children));
     if (items.length === 0) {
       els.quickList.innerHTML = '<div class="empty-box">Chưa có nháp</div>';
