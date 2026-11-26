@@ -995,7 +995,11 @@ object VaultRepository {
                     lines.add(0, "# ⚡ Ghi nhanh")
                     quickIdx = 0
                 }
-                lines.add(quickIdx + 1, "- $hhmm · $clean")
+                var insertAt = quickIdx + 1
+                while (insertAt < lines.size && !lines[insertAt].trim().startsWith("#")) {
+                    insertAt++
+                }
+                lines.add(insertAt, "- $hhmm · $clean")
                 return saveQuickNotesMd(context, lines.joinToString("\n").trimEnd() + "\n")
             }
             "stream" -> {

@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.5.6",
+    appVersion: "1.5.7",
 
     quickItems: [],
     noteStreams: [],
@@ -599,6 +599,18 @@
     }
   }
 
+  let didInitialBottomScroll = false;
+
+  function scrollActiveListToBottom() {
+    setTimeout(() => {
+      if (state.activeTab === "quick" && els.quickList) {
+        els.quickList.scrollTop = els.quickList.scrollHeight;
+      } else if (state.activeTab === "notes" && els.notesStreamList) {
+        els.notesStreamList.scrollTop = els.notesStreamList.scrollHeight;
+      }
+    }, 25);
+  }
+
   function loadVaultState() {
     if (hasNative) {
       try {
@@ -637,6 +649,10 @@
     }
     applyTheme();
     renderAll();
+    if (!didInitialBottomScroll) {
+      didInitialBottomScroll = true;
+      scrollActiveListToBottom();
+    }
   }
 
   // =========================================================================
@@ -1071,7 +1087,7 @@
     els.sheetContent.querySelector("[data-note-move-quick]").addEventListener("click", () => {
       closeSheet();
       vanishFromStreamAndRun(() => {
-        state.quickItems.unshift({ id: makeId("ni"), time: item.time || nowHHMM(), text: item.text, children: item.children || [] });
+        state.quickItems.push({ id: makeId("ni"), time: item.time || nowHHMM(), text: item.text, children: item.children || [] });
         persistQuickNotes();
         showToast("Đã đưa về khay Nháp");
       });
@@ -1364,15 +1380,15 @@
     vibrate(10);
 
     if (state.activeTab === "quick") {
-      state.quickItems.unshift({ id: makeId("ni"), time: nowHHMM(), text: raw, children: [] });
+      state.quickItems.push({ id: makeId("ni"), time: nowHHMM(), text: raw, children: [] });
       persistQuickNotes();
-      els.quickList.scrollTop = 0;
+      scrollActiveListToBottom();
     } else if (state.activeTab === "notes") {
       const st = getActiveStream();
       if (!st) return;
       st.items.push({ id: makeId("ni"), time: nowHHMM(), text: raw, children: [] });
       persistQuickNotes();
-      setTimeout(() => { els.notesStreamList.scrollTop = els.notesStreamList.scrollHeight; }, 20);
+      scrollActiveListToBottom();
     } else if (state.activeTab === "task") {
       if (state.taskTarget === "focus") {
         state.focusTasks.unshift({
@@ -1440,6 +1456,7 @@
 
   // Measure actual viewport height so dismissing Android keyboard ALWAYS restores the 3 bottom tabs immediately!
   let maxViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  let prevKbVisible = false;
 
   function updateKeyboardOpenState() {
     const curH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
@@ -1450,6 +1467,10 @@
       state.treeCollapsed = true;
       els.pinnedTreeBox.classList.add("collapsed");
     }
+    if (kbVisible && !prevKbVisible) {
+      scrollActiveListToBottom();
+    }
+    prevKbVisible = kbVisible;
   }
 
   window.addEventListener("resize", updateKeyboardOpenState);
@@ -1692,6 +1713,7 @@
     state.activeTab = tab;
     vibrate(8);
     renderAll();
+    scrollActiveListToBottom();
   }
 
   let swipeX = 0;
@@ -1776,6 +1798,7 @@
       localStorage.setItem("oq_active_stream", state.activeStreamId);
       vibrate(8);
       renderAll();
+      scrollActiveListToBottom();
       return;
     }
     const bmCard = e.target.closest(".notion-bookmark-card");
@@ -1909,7 +1932,7 @@
   window.__reloadVaultFromNative = () => { loadVaultState(); showToast("Đã kết nối Vault Syncthing"); };
   window.__openLaunchTab = (tab, focusInput) => {
     if (["quick", "notes", "task"].includes(tab)) {
-      state.activeTab = tab; renderAll();
+      state.activeTab = tab; renderAll(); scrollActiveListToBottom();
       if (focusInput) setTimeout(() => els.composerInput.focus(), 120);
     }
   };

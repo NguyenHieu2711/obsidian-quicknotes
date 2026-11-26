@@ -289,35 +289,12 @@ object WidgetVaultHelper {
         val md = if (fastMirror) VaultRepository.readQuickNotesMdFast(context) else VaultRepository.readQuickNotesMd(context)
         val doc = parseNotesDoc(md)
         val all = mutableListOf<NoteWidgetItem>()
-        var rank = 10000
 
-        // Quick items: index 0 is newest captured
-        for ((idx, entry) in doc.quickItems.withIndex()) {
-            val (starred, clean) = stripStar(entry.rawText)
-            val uid = "NQ|$idx|${entry.rawText.hashCode()}"
-            val tBoost = timeMinutes(entry.time).coerceAtLeast(0)
-            all.add(
-                NoteWidgetItem(
-                    uid = uid,
-                    groupKey = GROUP_QUICK,
-                    groupLabel = "+ Gắn nhóm",
-                    isUnassigned = true,
-                    time = entry.time,
-                    cleanText = clean,
-                    starred = starred,
-                    recencyRank = (rank - idx) + tBoost
-                )
-            )
-        }
-
-        // Stream items: appended at bottom of each stream, so reverse index is newest
-        for (st in doc.streams) {
-            val count = st.items.size
+        // Stream items: chronological order top -> bottom (higher recencyRank = newer at bottom)
+        for ((stIdx, st) in doc.streams.withIndex()) {
             for ((idx, entry) in st.items.withIndex()) {
                 val (starred, clean) = stripStar(entry.rawText)
                 val uid = "NS|${st.title}|$idx|${entry.rawText.hashCode()}"
-                val reverseOffset = count - 1 - idx
-                val tBoost = timeMinutes(entry.time).coerceAtLeast(0)
                 all.add(
                     NoteWidgetItem(
                         uid = uid,
@@ -327,10 +304,28 @@ object WidgetVaultHelper {
                         time = entry.time,
                         cleanText = clean,
                         starred = starred,
-                        recencyRank = (rank - 100 - reverseOffset) + tBoost
+                        recencyRank = (stIdx + 1) * 10000 + idx
                     )
                 )
             }
+        }
+
+        // Quick items: appended at bottom, placed after streams so newly captured notes stay at the bottom
+        for ((idx, entry) in doc.quickItems.withIndex()) {
+            val (starred, clean) = stripStar(entry.rawText)
+            val uid = "NQ|$idx|${entry.rawText.hashCode()}"
+            all.add(
+                NoteWidgetItem(
+                    uid = uid,
+                    groupKey = GROUP_QUICK,
+                    groupLabel = "+ Gắn nhóm",
+                    isUnassigned = true,
+                    time = entry.time,
+                    cleanText = clean,
+                    starred = starred,
+                    recencyRank = 1_000_000 + idx
+                )
+            )
         }
 
         val filtered = when (groupFilter) {
@@ -339,15 +334,16 @@ object WidgetVaultHelper {
             else -> all.filter { it.groupKey.equals(groupFilter, ignoreCase = true) }
         }
 
+        // ListView uses stackFromBottom=true (chat style): bottom item (last index) is newest & immediately visible
         return when (sortMode) {
             SORT_NAME -> filtered.sortedWith { a, b ->
                 viCollator.compare(a.cleanText, b.cleanText)
             }
             SORT_STAR -> filtered.sortedWith(
-                compareByDescending<NoteWidgetItem> { it.starred }
-                    .thenByDescending { it.recencyRank }
+                compareBy<NoteWidgetItem> { it.starred }
+                    .thenBy { it.recencyRank }
             )
-            else -> filtered.sortedByDescending { it.recencyRank }
+            else -> filtered.sortedBy { it.recencyRank }
         }
     }
 
@@ -388,7 +384,7 @@ object WidgetVaultHelper {
         val doc = parseNotesDoc(VaultRepository.readQuickNotesMdFast(context))
 
         if (targetGroupKey.isBlank() || targetGroupKey == GROUP_ALL || targetGroupKey == GROUP_QUICK) {
-            doc.quickItems.add(0, RawNoteEntry(hhmm, finalRaw))
+            doc.quickItems.add(RawNoteEntry(hhmm, finalRaw))
         } else {
             var st = doc.streams.find { it.title.equals(targetGroupKey, ignoreCase = true) }
             if (st == null) {
@@ -417,7 +413,7 @@ object WidgetVaultHelper {
             moved.time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         }
         if (targetGroupKey == GROUP_QUICK) {
-            doc.quickItems.add(0, moved)
+            doc.quickItems.add(moved)
         } else {
             var dest = doc.streams.find { it.title.equals(targetGroupKey, ignoreCase = true) }
             if (dest == null) {

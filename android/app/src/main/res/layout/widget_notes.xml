@@ -80,7 +80,9 @@
             android:clipToPadding="false"
             android:divider="@android:color/transparent"
             android:dividerHeight="6dp"
-            android:scrollbars="none" />
+            android:scrollbars="none"
+            android:stackFromBottom="true"
+            android:transcriptMode="alwaysScroll" />
 
         <TextView
             android:id="@+id/w_notes_empty"
