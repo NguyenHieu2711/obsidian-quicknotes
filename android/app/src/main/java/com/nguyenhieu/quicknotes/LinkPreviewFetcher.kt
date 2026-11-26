@@ -1,13 +1,26 @@
 package com.nguyenhieu.quicknotes
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
 import android.text.Html
+import android.util.LruCache
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.Charset
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 object LinkPreviewFetcher {
 
@@ -293,5 +306,193 @@ object LinkPreviewFetcher {
             if (s.isNotEmpty()) return s
         }
         return ""
+    }
+
+    // =========================================================================
+    // WIDGET NOTION EMBED BITMAP CACHE (COMPACT, ROUNDED, OOM/BINDER-SAFE)
+    // =========================================================================
+    private const val MAX_IMAGE_BYTES = 750 * 1024
+    private const val THUMB_W = 148
+    private const val THUMB_H = 120
+    private const val FAVICON_SIZE = 28
+
+    private val bitmapCache = object : LruCache<String, Bitmap>(48) {}
+    private val attemptedImages = ConcurrentHashMap.newKeySet<String>()
+
+    private fun thumbCacheDir(context: Context): File {
+        val dir = File(context.applicationContext.cacheDir, "widget_thumbs")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    private fun cacheKeyFor(url: String, isFavicon: Boolean): String {
+        val prefix = if (isFavicon) "fav_" else "img_"
+        return try {
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(url.toByteArray(Charsets.UTF_8))
+            val hex = digest.take(10).joinToString("") { "%02x".format(it) }
+            "$prefix$hex"
+        } catch (_: Exception) {
+            "$prefix${url.hashCode().toUInt().toString(16)}"
+        }
+    }
+
+    fun getCachedWidgetBitmap(context: Context, imageUrl: String, isFavicon: Boolean): Bitmap? {
+        val url = imageUrl.trim()
+        if (url.isEmpty() || !url.startsWith("http", ignoreCase = true)) return null
+        val key = cacheKeyFor(url, isFavicon)
+        bitmapCache.get(key)?.let { if (!it.isRecycled) return it }
+        val f = File(thumbCacheDir(context), "$key.png")
+        if (!f.exists() || !f.isFile || f.length() <= 0L) return null
+        return try {
+            val bmp = BitmapFactory.decodeFile(f.absolutePath)
+            if (bmp != null) {
+                bitmapCache.put(key, bmp)
+            }
+            bmp
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun hasWidgetBitmapOnDisk(context: Context, imageUrl: String, isFavicon: Boolean): Boolean {
+        val url = imageUrl.trim()
+        if (url.isEmpty() || !url.startsWith("http", ignoreCase = true)) return false
+        val key = cacheKeyFor(url, isFavicon)
+        if (bitmapCache.get(key) != null) return true
+        val f = File(thumbCacheDir(context), "$key.png")
+        return f.exists() && f.isFile && f.length() > 0L
+    }
+
+    fun fetchAndCacheWidgetBitmap(context: Context, imageUrl: String, isFavicon: Boolean): Boolean {
+        val url = imageUrl.trim()
+        if (url.isEmpty() || !url.startsWith("http", ignoreCase = true)) return false
+        if (hasWidgetBitmapOnDisk(context, url, isFavicon)) return false
+        val key = cacheKeyFor(url, isFavicon)
+        if (!attemptedImages.add(key)) return false
+
+        val bytes = downloadImageBytes(url) ?: return false
+        val decoded = decodeSampledBitmap(bytes, if (isFavicon) FAVICON_SIZE else THUMB_W, if (isFavicon) FAVICON_SIZE else THUMB_H)
+            ?: return false
+
+        val styled = try {
+            if (isFavicon) {
+                cropAndRoundBitmap(decoded, FAVICON_SIZE, FAVICON_SIZE, 6f, roundAllCorners = true)
+            } else {
+                cropAndRoundBitmap(decoded, THUMB_W, THUMB_H, 16f, roundAllCorners = false)
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            if (!decoded.isRecycled) decoded.recycle()
+        } ?: return false
+
+        return try {
+            val outFile = File(thumbCacheDir(context), "$key.png")
+            FileOutputStream(outFile).use { fos ->
+                styled.compress(Bitmap.CompressFormat.PNG, 92, fos)
+            }
+            bitmapCache.put(key, styled)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun downloadImageBytes(startUrl: String): ByteArray? {
+        var currentUrl = startUrl
+        for (hop in 0..3) {
+            var conn: HttpURLConnection? = null
+            try {
+                conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    instanceFollowRedirects = false
+                    connectTimeout = CONNECT_TIMEOUT_MS
+                    readTimeout = READ_TIMEOUT_MS
+                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("Accept", "image/webp,image/png,image/jpeg,image/*,*/*;q=0.8")
+                }
+                val code = conn.responseCode
+                if (code in 300..399) {
+                    val loc = conn.getHeaderField("Location").orEmpty().trim()
+                    if (loc.isEmpty()) return null
+                    currentUrl = resolveUrl(currentUrl, loc)
+                    if (currentUrl.isEmpty()) return null
+                    continue
+                }
+                if (code != HttpURLConnection.HTTP_OK) return null
+                val buf = ByteArray(8192)
+                val out = ByteArrayOutputStream()
+                conn.inputStream.use { input ->
+                    var total = 0
+                    while (total < MAX_IMAGE_BYTES) {
+                        val n = input.read(buf, 0, minOf(buf.size, MAX_IMAGE_BYTES - total))
+                        if (n <= 0) break
+                        out.write(buf, 0, n)
+                        total += n
+                    }
+                }
+                val arr = out.toByteArray()
+                return if (arr.isNotEmpty()) arr else null
+            } catch (_: Exception) {
+                return null
+            } finally {
+                conn?.disconnect()
+            }
+        }
+        return null
+    }
+
+    private fun decodeSampledBitmap(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap? {
+        return try {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+            var sample = 1
+            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                while ((opts.outWidth / (sample * 2)) >= reqW && (opts.outHeight / (sample * 2)) >= reqH) {
+                    sample *= 2
+                }
+            }
+            val decodeOpts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun cropAndRoundBitmap(
+        src: Bitmap,
+        targetW: Int,
+        targetH: Int,
+        radiusPx: Float,
+        roundAllCorners: Boolean
+    ): Bitmap {
+        val out = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val path = Path()
+        val radii = if (roundAllCorners) {
+            floatArrayOf(radiusPx, radiusPx, radiusPx, radiusPx, radiusPx, radiusPx, radiusPx, radiusPx)
+        } else {
+            // Notion Bookmark style: flush square left edge, rounded right corners matching card border
+            floatArrayOf(0f, 0f, radiusPx, radiusPx, radiusPx, radiusPx, 0f, 0f)
+        }
+        path.addRoundRect(RectF(0f, 0f, targetW.toFloat(), targetH.toFloat()), radii, Path.Direction.CW)
+        canvas.clipPath(path)
+
+        val srcW = src.width.toFloat().coerceAtLeast(1f)
+        val srcH = src.height.toFloat().coerceAtLeast(1f)
+        val scale = maxOf(targetW / srcW, targetH / srcH)
+        val cropW = (targetW / scale).toInt().coerceIn(1, src.width)
+        val cropH = (targetH / scale).toInt().coerceIn(1, src.height)
+        val left = ((src.width - cropW) / 2).coerceAtLeast(0)
+        val top = ((src.height - cropH) / 2).coerceAtLeast(0)
+        val srcRect = Rect(left, top, left + cropW, top + cropH)
+        val dstRect = Rect(0, 0, targetW, targetH)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(src, srcRect, dstRect, paint)
+        return out
     }
 }

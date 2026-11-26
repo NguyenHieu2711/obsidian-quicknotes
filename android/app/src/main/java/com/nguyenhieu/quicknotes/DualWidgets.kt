@@ -290,6 +290,39 @@ private class NotesRemoteViewsFactory(
 ) : RemoteViewsService.RemoteViewsFactory {
 
     private var items: List<NoteWidgetItem> = emptyList()
+    private var previewsRoot: org.json.JSONObject = org.json.JSONObject()
+
+    private data class ExtractedWidgetLink(
+        val url: String,
+        val mdLabel: String,
+        val surroundingText: String
+    )
+
+    private val mdLinkRe = Regex("""\[([^\]]*)\]\((?:<([^>\s]+)>|([^\s)]+))(?:\s+"[^"]*")?\)""")
+    private val rawUrlRe = Regex("""https?://[^\s<>()]+""")
+
+    private fun extractFirstLink(raw: String): ExtractedWidgetLink? {
+        val mdMatch = mdLinkRe.find(raw)
+        if (mdMatch != null) {
+            val label = mdMatch.groupValues[1].trim()
+            val url = mdMatch.groupValues[2].ifEmpty { mdMatch.groupValues[3] }.trim().trimEnd('.', ',', ';', ':', '!', '?')
+            if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
+                val before = raw.substring(0, mdMatch.range.first).trim()
+                val after = raw.substring(mdMatch.range.last + 1).trim()
+                val surrounding = listOf(before, after).filter { it.isNotEmpty() }.joinToString(" ").trim()
+                return ExtractedWidgetLink(url, label, surrounding)
+            }
+        }
+        val rawMatch = rawUrlRe.find(raw)
+        if (rawMatch != null) {
+            val url = rawMatch.value.trimEnd('.', ',', ';', ':', '!', '?')
+            val before = raw.substring(0, rawMatch.range.first).trim()
+            val after = raw.substring(rawMatch.range.last + 1).trim()
+            val surrounding = listOf(before, after).filter { it.isNotEmpty() }.joinToString(" ").trim()
+            return ExtractedWidgetLink(url, "", surrounding)
+        }
+        return null
+    }
 
     override fun onCreate() {}
 
@@ -298,6 +331,33 @@ private class NotesRemoteViewsFactory(
         val sortMode = WidgetVaultHelper.getWidgetSortMode(context, widgetId)
         // Reads from 0.01ms RAM / 0.2ms local mirror — ZERO SAF IPC lag!
         items = WidgetVaultHelper.loadNotesForWidget(context, groupFilter, sortMode, fastMirror = true)
+        previewsRoot = try {
+            org.json.JSONObject(VaultRepository.readLinkPreviewsJsonFast(context))
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
+
+        val urlsNeedingPreview = mutableListOf<String>()
+        val thumbsToDownload = mutableListOf<Pair<String, Boolean>>()
+        for (item in items.take(24)) {
+            val ext = extractFirstLink(item.cleanText) ?: continue
+            val pObj = previewsRoot.optJSONObject(ext.url)
+            if (pObj == null || pObj.optString("title", "").isBlank()) {
+                urlsNeedingPreview.add(ext.url)
+            } else {
+                val imgUrl = pObj.optString("image", "").trim()
+                if (imgUrl.isNotEmpty() && !LinkPreviewFetcher.hasWidgetBitmapOnDisk(context, imgUrl, isFavicon = false)) {
+                    thumbsToDownload.add(Pair(imgUrl, false))
+                }
+                val favUrl = pObj.optString("favicon", "").trim().ifEmpty { LinkPreviewFetcher.googleFaviconUrl(ext.url) }
+                if (favUrl.isNotEmpty() && !LinkPreviewFetcher.hasWidgetBitmapOnDisk(context, favUrl, isFavicon = true)) {
+                    thumbsToDownload.add(Pair(favUrl, true))
+                }
+            }
+        }
+        if (urlsNeedingPreview.isNotEmpty() || thumbsToDownload.isNotEmpty()) {
+            VaultRepository.warmWidgetLinkPreviewsAndThumbsAsync(context, urlsNeedingPreview, thumbsToDownload)
+        }
     }
 
     override fun onDestroy() {
@@ -307,7 +367,6 @@ private class NotesRemoteViewsFactory(
     override fun getCount(): Int = items.size
 
     private fun formatWidgetNoteText(raw: String): String {
-        val mdLinkRe = Regex("""\[([^\]]+)\]\((?:<([^>\s]+)>|([^\s)]+))(?:\s+"[^"]*")?\)""")
         val replaced = mdLinkRe.replace(raw) { m ->
             val label = m.groupValues[1].trim()
             val url = m.groupValues[2].ifEmpty { m.groupValues[3] }.trim()
@@ -317,7 +376,7 @@ private class NotesRemoteViewsFactory(
                 "🔗 $label"
             }
         }
-        return replaced.replace(Regex("""https?://[^\s<>()]+""")) { m ->
+        return replaced.replace(rawUrlRe) { m ->
             "🔗 ${LinkPreviewFetcher.extractHost(m.value)}"
         }.trim()
     }
@@ -327,7 +386,61 @@ private class NotesRemoteViewsFactory(
         val item = items[position]
         val rv = RemoteViews(context.packageName, R.layout.widget_item_note)
 
-        rv.setTextViewText(R.id.wn_text, formatWidgetNoteText(item.cleanText))
+        val extracted = extractFirstLink(item.cleanText)
+        if (extracted == null) {
+            rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
+            rv.setTextViewText(R.id.wn_text, item.cleanText)
+            rv.setViewVisibility(R.id.wn_embed_card, View.GONE)
+        } else {
+            val surrounding = formatWidgetNoteText(extracted.surroundingText)
+            if (surrounding.isNotEmpty()) {
+                rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
+                rv.setTextViewText(R.id.wn_text, surrounding)
+            } else {
+                rv.setViewVisibility(R.id.wn_text, View.GONE)
+            }
+
+            val pObj = previewsRoot.optJSONObject(extracted.url)
+            val host = LinkPreviewFetcher.extractHost(extracted.url)
+            val pTitle = pObj?.optString("title", "")?.trim().orEmpty()
+            val cardTitle = when {
+                pTitle.isNotEmpty() && !pTitle.equals(host, ignoreCase = true) -> pTitle
+                extracted.mdLabel.isNotEmpty() && !extracted.mdLabel.equals("Embed", ignoreCase = true) -> extracted.mdLabel
+                pTitle.isNotEmpty() -> pTitle
+                else -> host
+            }
+            val cardDesc = pObj?.optString("description", "")?.trim().orEmpty()
+            val cardSite = pObj?.optString("site", "")?.trim().orEmpty().ifEmpty { host }
+            val imgUrl = pObj?.optString("image", "")?.trim().orEmpty()
+            val favUrl = pObj?.optString("favicon", "")?.trim().orEmpty().ifEmpty { LinkPreviewFetcher.googleFaviconUrl(extracted.url) }
+
+            rv.setViewVisibility(R.id.wn_embed_card, View.VISIBLE)
+            rv.setTextViewText(R.id.wn_embed_title, cardTitle)
+            if (cardDesc.isNotEmpty()) {
+                rv.setViewVisibility(R.id.wn_embed_desc, View.VISIBLE)
+                rv.setTextViewText(R.id.wn_embed_desc, cardDesc)
+            } else {
+                rv.setViewVisibility(R.id.wn_embed_desc, View.GONE)
+            }
+
+            val favBmp = LinkPreviewFetcher.getCachedWidgetBitmap(context, favUrl, isFavicon = true)
+            if (favBmp != null) {
+                rv.setViewVisibility(R.id.wn_embed_favicon, View.VISIBLE)
+                rv.setImageViewBitmap(R.id.wn_embed_favicon, favBmp)
+                rv.setTextViewText(R.id.wn_embed_site, cardSite)
+            } else {
+                rv.setViewVisibility(R.id.wn_embed_favicon, View.GONE)
+                rv.setTextViewText(R.id.wn_embed_site, "🔗 $cardSite")
+            }
+
+            val thumbBmp = LinkPreviewFetcher.getCachedWidgetBitmap(context, imgUrl, isFavicon = false)
+            if (thumbBmp != null) {
+                rv.setViewVisibility(R.id.wn_embed_thumb, View.VISIBLE)
+                rv.setImageViewBitmap(R.id.wn_embed_thumb, thumbBmp)
+            } else {
+                rv.setViewVisibility(R.id.wn_embed_thumb, View.GONE)
+            }
+        }
 
         if (item.isUnassigned) {
             rv.setTextViewText(R.id.wn_group_chip, "+ Gắn nhóm")
@@ -347,13 +460,12 @@ private class NotesRemoteViewsFactory(
             if (item.starred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off
         )
 
-        rv.setOnClickFillInIntent(
-            R.id.wn_text,
-            Intent().apply {
-                putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_NOTE)
-                putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
-            }
-        )
+        val editFillIntent = Intent().apply {
+            putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_NOTE)
+            putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
+        }
+        rv.setOnClickFillInIntent(R.id.wn_text, editFillIntent)
+        rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
         rv.setOnClickFillInIntent(
             R.id.wn_group_chip,
             Intent().apply {

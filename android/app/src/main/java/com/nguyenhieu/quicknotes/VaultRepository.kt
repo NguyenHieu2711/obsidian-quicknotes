@@ -826,6 +826,59 @@ object VaultRepository {
         return if (raw.startsWith("{")) raw else "{}"
     }
 
+    fun readLinkPreviewsJsonFast(context: Context): String {
+        val raw = readRelFileFastMirror(context, REL_LINK_PREVIEWS, "{}").trim()
+        return if (raw.startsWith("{")) raw else "{}"
+    }
+
+    private val attemptedWidgetPreviewUrls = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun warmWidgetLinkPreviewsAndThumbsAsync(
+        context: Context,
+        urlsNeedingPreview: List<String>,
+        thumbsToDownload: List<Pair<String, Boolean>>
+    ) {
+        if (urlsNeedingPreview.isEmpty() && thumbsToDownload.isEmpty()) return
+        val appCtx = context.applicationContext
+        previewWarmExecutor.execute {
+            var updatedAny = false
+            for (u in urlsNeedingPreview.distinct().take(6)) {
+                if (!attemptedWidgetPreviewUrls.add(u)) continue
+                try {
+                    val existing = readLinkPreviewCached(appCtx, u)
+                    val previewObj = if (existing != null && existing.optString("title", "").isNotBlank()) {
+                        existing
+                    } else {
+                        val fetched = LinkPreviewFetcher.fetch(u)
+                        upsertLinkPreview(appCtx, u, fetched)
+                        updatedAny = true
+                        fetched
+                    }
+                    val img = previewObj.optString("image", "").trim()
+                    if (img.isNotEmpty() && LinkPreviewFetcher.fetchAndCacheWidgetBitmap(appCtx, img, isFavicon = false)) {
+                        updatedAny = true
+                    }
+                    val fav = previewObj.optString("favicon", "").trim()
+                    if (fav.isNotEmpty() && LinkPreviewFetcher.fetchAndCacheWidgetBitmap(appCtx, fav, isFavicon = true)) {
+                        updatedAny = true
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            for ((imgUrl, isFav) in thumbsToDownload.distinct().take(12)) {
+                try {
+                    if (LinkPreviewFetcher.fetchAndCacheWidgetBitmap(appCtx, imgUrl, isFavicon = isFav)) {
+                        updatedAny = true
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            if (updatedAny) {
+                DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
+            }
+        }
+    }
+
     @Synchronized
     fun readLinkPreviewCached(context: Context, url: String): JSONObject? {
         return try {
@@ -911,6 +964,11 @@ object VaultRepository {
                     if (existing != null && existing.optString("image", "").isNotBlank()) continue
                     val fetched = LinkPreviewFetcher.fetch(u)
                     upsertLinkPreview(appCtx, u, fetched)
+                    val img = fetched.optString("image", "").trim()
+                    if (img.isNotEmpty()) LinkPreviewFetcher.fetchAndCacheWidgetBitmap(appCtx, img, isFavicon = false)
+                    val fav = fetched.optString("favicon", "").trim()
+                    if (fav.isNotEmpty()) LinkPreviewFetcher.fetchAndCacheWidgetBitmap(appCtx, fav, isFavicon = true)
+                    DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
                 } catch (_: Exception) {
                 }
             }

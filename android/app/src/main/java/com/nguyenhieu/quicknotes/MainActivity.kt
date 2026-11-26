@@ -704,11 +704,13 @@ class MainActivity : AppCompatActivity() {
             if (url.isEmpty()) return
             lifecycleScope.launch(Dispatchers.IO) {
                 val cached = VaultRepository.readLinkPreviewCached(this@MainActivity, url)
+                var fetchedNew = false
                 val data = if (cached != null && (cached.optString("image", "").isNotBlank() || cached.optString("description", "").isNotBlank() || cached.optString("title", "") != LinkPreviewFetcher.extractHost(url))) {
                     cached
                 } else {
                     val fetched = LinkPreviewFetcher.fetch(url)
                     VaultRepository.upsertLinkPreview(this@MainActivity, url, fetched)
+                    fetchedNew = true
                     fetched
                 }
                 val uEsc = JSONObject.quote(url)
@@ -720,6 +722,22 @@ class MainActivity : AppCompatActivity() {
                             null
                         )
                     }
+                }
+                val imgUrl = data.optString("image", "").trim()
+                val favUrl = data.optString("favicon", "").trim().ifEmpty { LinkPreviewFetcher.googleFaviconUrl(url) }
+                var thumbUpdated = false
+                if (imgUrl.isNotEmpty() && !LinkPreviewFetcher.hasWidgetBitmapOnDisk(this@MainActivity, imgUrl, isFavicon = false)) {
+                    if (LinkPreviewFetcher.fetchAndCacheWidgetBitmap(this@MainActivity, imgUrl, isFavicon = false)) {
+                        thumbUpdated = true
+                    }
+                }
+                if (favUrl.isNotEmpty() && !LinkPreviewFetcher.hasWidgetBitmapOnDisk(this@MainActivity, favUrl, isFavicon = true)) {
+                    if (LinkPreviewFetcher.fetchAndCacheWidgetBitmap(this@MainActivity, favUrl, isFavicon = true)) {
+                        thumbUpdated = true
+                    }
+                }
+                if (fetchedNew || thumbUpdated) {
+                    DualWidgetContract.refreshListOnly(this@MainActivity, DualWidgetContract.KIND_NOTES)
                 }
             }
         }
