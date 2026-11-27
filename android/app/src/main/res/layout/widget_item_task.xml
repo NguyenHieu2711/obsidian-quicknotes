@@ -57,7 +57,7 @@
                 android:paddingBottom="2dp"
                 android:singleLine="true"
                 android:text="Trọng tâm hôm nay"
-                android:textColor="#38BDF8"
+                android:textColor="#4ADE80"
                 android:textSize="10.5sp"
                 android:textStyle="bold" />
 

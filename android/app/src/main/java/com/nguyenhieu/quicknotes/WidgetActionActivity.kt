@@ -240,7 +240,7 @@ class WidgetActionActivity : Activity() {
         val bg = GradientDrawable().apply {
             setColor(Color.parseColor("#191C24"))
             setStroke(dp(1), Color.parseColor("#2E3546"))
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = dp(13).toFloat()
         }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -428,9 +428,9 @@ class WidgetActionActivity : Activity() {
     // SHEET 1: + QUICK ADD (0ms OPEN VIA RAM/MIRROR + ATOMIC SINGLE-FLIGHT SAVE)
     // =========================================================================
     private fun renderQuickAddSheet(isTask: Boolean, widgetId: Int) {
-        val accentHex = if (isTask) "#38BDF8" else "#A78BFA"
-        val accentBtnBg = if (isTask) "#38BDF8" else "#8B5CF6"
-        val accentBtnText = if (isTask) "#0F172A" else "#FFFFFF"
+        val accentHex = if (isTask) "#4ADE80" else "#38BDF8"
+        val accentBtnBg = if (isTask) "#22C55E" else "#38BDF8"
+        val accentBtnText = if (isTask) "#052E16" else "#0F172A"
 
         val currentFilter = WidgetVaultHelper.getWidgetGroupFilter(this, widgetId, WidgetVaultHelper.GROUP_ALL)
         val rawOptions = if (isTask) {
@@ -994,11 +994,11 @@ class WidgetActionActivity : Activity() {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 maxWidth = dp(170)
-                setTextColor(Color.parseColor("#C4B5FD"))
+                setTextColor(Color.parseColor("#38BDF8"))
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#231F36"))
-                    setStroke(dp(1), Color.parseColor("#4B3F72"))
-                    cornerRadius = dp(9).toFloat()
+                    setColor(Color.parseColor("#16283B"))
+                    setStroke(dp(1), Color.parseColor("#2A5476"))
+                    cornerRadius = dp(8).toFloat()
                 }
                 setPadding(dp(10), dp(7), dp(10), dp(7))
                 setOnClickListener {
@@ -1018,10 +1018,10 @@ class WidgetActionActivity : Activity() {
                 text = "Lưu"
                 textSize = 13f
                 paint.isFakeBoldText = true
-                setTextColor(Color.WHITE)
+                setTextColor(Color.parseColor("#0F172A"))
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#8B5CF6"))
-                    cornerRadius = dp(9).toFloat()
+                    setColor(Color.parseColor("#38BDF8"))
+                    cornerRadius = dp(8).toFloat()
                 }
                 setPadding(dp(16), dp(7), dp(16), dp(7))
                 setOnClickListener {
@@ -1116,10 +1116,10 @@ class WidgetActionActivity : Activity() {
                 text = "Lưu"
                 textSize = 13f
                 paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#0F172A"))
+                setTextColor(Color.parseColor("#052E16"))
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#38BDF8"))
-                    cornerRadius = dp(9).toFloat()
+                    setColor(Color.parseColor("#22C55E"))
+                    cornerRadius = dp(8).toFloat()
                 }
                 setPadding(dp(16), dp(7), dp(16), dp(7))
                 setOnClickListener {

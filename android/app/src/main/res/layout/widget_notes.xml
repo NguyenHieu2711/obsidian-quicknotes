@@ -65,7 +65,7 @@
             android:background="@drawable/widget_add_notes_bg"
             android:padding="7dp"
             android:scaleType="fitCenter"
-            android:src="@drawable/ic_w_plus_light" />
+            android:src="@drawable/ic_w_plus_dark" />
     </LinearLayout>
 
     <FrameLayout
