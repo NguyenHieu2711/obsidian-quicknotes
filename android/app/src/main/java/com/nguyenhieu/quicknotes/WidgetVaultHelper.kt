@@ -42,6 +42,7 @@ object WidgetVaultHelper {
     const val GROUP_ALL = "__ALL__"
     const val GROUP_QUICK = "__QUICK__"
     const val GROUP_FOCUS = "__FOCUS__"
+    const val GROUP_WAIT = "WH:Việc chờ"
 
     const val SORT_NEWEST = "newest"
     const val SORT_NAME = "name"
@@ -493,43 +494,178 @@ object WidgetVaultHelper {
         return sections
     }
 
-    fun listTaskGroups(context: Context, fastMirror: Boolean = false): List<GroupOption> {
-        val rawAnchor = if (fastMirror) VaultRepository.readDailyAnchorJsonFast(context) else VaultRepository.readDailyAnchorJson(context)
-        var focusCount = 0
-        try {
-            val arr = JSONObject(rawAnchor).optJSONArray("customTasks")
-            if (arr != null) focusCount = arr.length()
-        } catch (_: Exception) {
-        }
+    // =========================================================================
+    // SINGLE-FILE QUICK TASKS PARSER / SERIALIZER (0. Inbox/✅ Quick Tasks.md)
+    // =========================================================================
+    private data class RawSubTask(
+        var done: Boolean,
+        var text: String
+    )
 
-        val whMd = if (fastMirror) VaultRepository.readTaskWarehouseMdFast(context) else VaultRepository.readTaskWarehouseMd(context)
-        val whLines = whMd.replace("\r\n", "\n").split("\n")
-        val sections = scanWarehouseSections(whLines)
-        val countsByKey = mutableMapOf<String, Int>()
-        var currentKey = sections.firstOrNull()?.key ?: "WH:Hộp tiếp nhận"
+    private data class RawQuickTask(
+        var done: Boolean,
+        var rawBody: String,
+        val subTasks: MutableList<RawSubTask> = mutableListOf()
+    )
 
-        for ((idx, ln) in whLines.withIndex()) {
-            val sec = sections.find { it.headingLineIndex == idx }
-            if (sec != null) {
-                currentKey = sec.key
+    private data class RawTaskGroup(
+        val key: String, // GROUP_FOCUS or "WH:<label>"
+        val label: String,
+        val isFocus: Boolean,
+        val items: MutableList<RawQuickTask> = mutableListOf()
+    )
+
+    private data class ParsedTasksDoc(
+        val focusItems: MutableList<RawQuickTask>,
+        val waitGroups: MutableList<RawTaskGroup>
+    )
+
+    private val subTaskLineRegex = Regex("""^(\t+| {2,})-\s*\[([ xX])\]\s+(.+)$""")
+    private val subBulletLineRegex = Regex("""^(\t+| {2,})-\s+(.+)$""")
+
+    private fun parseQuickTasksDoc(md: String): ParsedTasksDoc {
+        val focusItems = mutableListOf<RawQuickTask>()
+        val waitGroups = mutableListOf<RawTaskGroup>()
+        var inFocus = true
+        var curWaitGroup: RawTaskGroup? = null
+        var lastParent: RawQuickTask? = null
+
+        val lines = md.replace("\r\n", "\n").split("\n")
+        for (rawLine in lines) {
+            val trimmed = rawLine.trim()
+            if (trimmed.isEmpty() || trimmed == "---") continue
+
+            if (trimmed.startsWith("# ") && !trimmed.startsWith("## ")) {
+                val h1 = trimmed.removePrefix("# ").trim()
+                lastParent = null
+                if (h1.contains("Hôm nay", ignoreCase = true) || h1.contains("Trọng tâm", ignoreCase = true)) {
+                    inFocus = true
+                    curWaitGroup = null
+                } else {
+                    inFocus = false
+                    curWaitGroup = null
+                }
                 continue
             }
-            if (taskLineRegex.matches(ln.trim())) {
-                countsByKey[currentKey] = (countsByKey[currentKey] ?: 0) + 1
+
+            if (trimmed.startsWith("## ") || trimmed.startsWith("### ")) {
+                val clean = trimmed.replace(Regex("""^#+\s*"""), "")
+                    .replace(Regex("""^[^\p{L}\p{N}]+"""), "")
+                    .trim()
+                lastParent = null
+                if (clean.isNotEmpty()) {
+                    inFocus = false
+                    val key = "WH:$clean"
+                    val existing = waitGroups.find { it.key.equals(key, ignoreCase = true) }
+                    curWaitGroup = existing ?: RawTaskGroup(key, clean, isFocus = false).also { waitGroups.add(it) }
+                }
+                continue
+            }
+
+            val subTaskMatch = subTaskLineRegex.find(rawLine)
+            if (subTaskMatch != null && lastParent != null) {
+                val subDone = subTaskMatch.groupValues[2].equals("x", ignoreCase = true)
+                val subTxt = subTaskMatch.groupValues[3].trim()
+                if (subTxt.isNotEmpty()) lastParent.subTasks.add(RawSubTask(subDone, subTxt))
+                continue
+            }
+            val subBulletMatch = subBulletLineRegex.find(rawLine)
+            if (subBulletMatch != null && lastParent != null) {
+                val subTxt = subBulletMatch.groupValues[2].trim()
+                if (subTxt.isNotEmpty()) lastParent.subTasks.add(RawSubTask(false, subTxt))
+                continue
+            }
+
+            val m = taskLineRegex.find(trimmed)
+            if (m != null) {
+                val done = m.groupValues[1].equals("x", ignoreCase = true)
+                val body = m.groupValues[2].trim()
+                if (body.isEmpty()) continue
+                val entry = RawQuickTask(done, body)
+                if (inFocus) {
+                    focusItems.add(entry)
+                } else {
+                    val grp = curWaitGroup ?: (waitGroups.find { it.key == GROUP_WAIT }
+                        ?: RawTaskGroup(GROUP_WAIT, "Việc chờ", isFocus = false).also { waitGroups.add(0, it) })
+                    curWaitGroup = grp
+                    grp.items.add(entry)
+                }
+                lastParent = entry
             }
         }
 
-        val totalWh = countsByKey.values.sum()
-        val out = mutableListOf<GroupOption>()
-        out.add(GroupOption(GROUP_ALL, "Tất cả Task", "", focusCount + totalWh))
-        out.add(GroupOption(GROUP_FOCUS, "Trọng tâm hôm nay", "Hôm nay", focusCount))
+        if (waitGroups.isEmpty()) {
+            waitGroups.add(RawTaskGroup(GROUP_WAIT, "Việc chờ", isFocus = false))
+        }
+        return ParsedTasksDoc(focusItems, waitGroups)
+    }
 
-        if (sections.isEmpty()) {
-            out.add(GroupOption("WH:Hộp tiếp nhận", "Hộp tiếp nhận", "Nhà kho", totalWh))
-        } else {
-            for (sec in sections) {
-                out.add(GroupOption(sec.key, sec.cleanLabel, "Nhà kho", countsByKey[sec.key] ?: 0))
+    private fun serializeQuickTasksDoc(doc: ParsedTasksDoc): String {
+        val out = mutableListOf<String>()
+        out.add("# 🎯 Hôm nay")
+        for (t in doc.focusItems) {
+            out.add("- [${if (t.done) "x" else " "}] ${t.rawBody}")
+            for (st in t.subTasks) {
+                out.add("\t- [${if (st.done) "x" else " "}] ${st.text}")
             }
+        }
+
+        out.add("# 📥 Việc chờ")
+        val defaultWait = doc.waitGroups.find { it.key == GROUP_WAIT }
+        if (defaultWait != null) {
+            for (t in defaultWait.items) {
+                out.add("- [${if (t.done) "x" else " "}] ${t.rawBody}")
+                for (st in t.subTasks) {
+                    out.add("\t- [${if (st.done) "x" else " "}] ${st.text}")
+                }
+            }
+        }
+        for (grp in doc.waitGroups) {
+            if (grp.key == GROUP_WAIT) continue
+            out.add("## ${grp.label}")
+            for (t in grp.items) {
+                out.add("- [${if (t.done) "x" else " "}] ${t.rawBody}")
+                for (st in t.subTasks) {
+                    out.add("\t- [${if (st.done) "x" else " "}] ${st.text}")
+                }
+            }
+        }
+        return out.joinToString("\n").trimEnd() + "\n"
+    }
+
+    private fun locateQuickTask(doc: ParsedTasksDoc, uid: String): Pair<MutableList<RawQuickTask>, Int>? {
+        val parts = uid.split("|")
+        if (parts.size < 4 || parts[0] != "QT") return null
+        val grpKey = parts[1]
+        val idx = parts[2].toIntOrNull() ?: -1
+        val bodyHash = parts[3].toIntOrNull()
+
+        val targetList = if (grpKey == GROUP_FOCUS) {
+            doc.focusItems
+        } else {
+            doc.waitGroups.find { it.key.equals(grpKey, ignoreCase = true) }?.items
+        } ?: return null
+
+        if (idx in targetList.indices && (bodyHash == null || targetList[idx].rawBody.hashCode() == bodyHash)) {
+            return Pair(targetList, idx)
+        }
+        if (bodyHash != null) {
+            val found = targetList.indexOfFirst { it.rawBody.hashCode() == bodyHash }
+            if (found >= 0) return Pair(targetList, found)
+        }
+        return null
+    }
+
+    fun listTaskGroups(context: Context, fastMirror: Boolean = false): List<GroupOption> {
+        val md = if (fastMirror) VaultRepository.readQuickTasksMdFast(context) else VaultRepository.readQuickTasksMd(context)
+        val doc = parseQuickTasksDoc(md)
+        val focusCount = doc.focusItems.size
+        val waitTotal = doc.waitGroups.sumOf { it.items.size }
+        val out = mutableListOf<GroupOption>()
+        out.add(GroupOption(GROUP_ALL, "Tất cả Task", "", focusCount + waitTotal))
+        out.add(GroupOption(GROUP_FOCUS, "Hôm nay", "Trọng tâm", focusCount))
+        for (grp in doc.waitGroups) {
+            out.add(GroupOption(grp.key, grp.label, "Việc chờ", grp.items.size))
         }
         return out
     }
@@ -537,80 +673,53 @@ object WidgetVaultHelper {
     fun resolveTaskGroupHeaderTitle(context: Context, groupFilter: String): String {
         return when {
             groupFilter == GROUP_ALL -> "Task · Tất cả ▾"
-            groupFilter == GROUP_FOCUS -> "Trọng tâm hôm nay ▾"
+            groupFilter == GROUP_FOCUS -> "Hôm nay ▾"
             groupFilter.startsWith("WH:") -> "${groupFilter.removePrefix("WH:")} ▾"
             else -> "$groupFilter ▾"
         }
     }
 
     fun loadTasksForWidget(context: Context, groupFilter: String, sortMode: String, fastMirror: Boolean = false): List<TaskWidgetItem> {
+        val md = if (fastMirror) VaultRepository.readQuickTasksMdFast(context) else VaultRepository.readQuickTasksMd(context)
+        val doc = parseQuickTasksDoc(md)
         val all = mutableListOf<TaskWidgetItem>()
-        var rank = 20000
+        val focusBase = 20000
 
-        // 1. Focus Tasks (daily-focus-anchor.json)
-        try {
-            val rawAnchor = if (fastMirror) VaultRepository.readDailyAnchorJsonFast(context) else VaultRepository.readDailyAnchorJson(context)
-            val arr = JSONObject(rawAnchor).optJSONArray("customTasks")
-            if (arr != null) {
-                val len = arr.length()
-                for (i in 0 until len) {
-                    val obj = arr.optJSONObject(i) ?: continue
-                    val id = obj.optString("id", "cf_$i")
-                    val rawTxt = obj.optString("text", "").trim()
-                    if (rawTxt.isEmpty()) continue
-                    val (hasStarPrefix, stripped) = stripStar(rawTxt)
-                    val (cleanTitle, inlineRem) = TaskReminderHelper.extractFromMarkdownBody(stripped)
-                    val remindAt = TaskReminderHelper.normalizeRemindAt(obj.optString("remindAt", "")).ifEmpty { inlineRem }
-                    val starred = obj.optBoolean("isCore", false) || hasStarPrefix
-                    val done = obj.optString("status") == "done"
-                    all.add(
-                        TaskWidgetItem(
-                            uid = "TF|$id",
-                            groupKey = GROUP_FOCUS,
-                            groupLabel = "Trọng tâm hôm nay",
-                            cleanText = cleanTitle.ifEmpty { stripped },
-                            done = done,
-                            starred = starred,
-                            recencyRank = rank - (len - 1 - i),
-                            remindAt = remindAt
-                        )
-                    )
-                }
-            }
-        } catch (_: Exception) {
-        }
-
-        // 2. Warehouse Tasks (✅ Nhà kho chứa Task.md)
-        val whMd = if (fastMirror) VaultRepository.readTaskWarehouseMdFast(context) else VaultRepository.readTaskWarehouseMd(context)
-        val whLines = whMd.replace("\r\n", "\n").split("\n")
-        val sections = scanWarehouseSections(whLines)
-        var curKey = sections.firstOrNull()?.key ?: "WH:Hộp tiếp nhận"
-        var curLabel = sections.firstOrNull()?.cleanLabel ?: "Hộp tiếp nhận"
-
-        for ((lineIdx, rawLine) in whLines.withIndex()) {
-            val sec = sections.find { it.headingLineIndex == lineIdx }
-            if (sec != null) {
-                curKey = sec.key
-                curLabel = sec.cleanLabel
-                continue
-            }
-            val m = taskLineRegex.find(rawLine.trim()) ?: continue
-            val done = m.groupValues[1].equals("x", ignoreCase = true)
-            val rawTaskBody = m.groupValues[2].trim()
-            val (starred, starStripped) = stripStar(rawTaskBody)
-            val (clean, remindAt) = TaskReminderHelper.extractFromMarkdownBody(starStripped)
+        for ((i, entry) in doc.focusItems.withIndex()) {
+            val (starred, starStripped) = stripStar(entry.rawBody)
+            val (cleanTitle, remindAt) = TaskReminderHelper.extractFromMarkdownBody(starStripped)
             all.add(
                 TaskWidgetItem(
-                    uid = "TW|$lineIdx|${rawTaskBody.hashCode()}",
-                    groupKey = curKey,
-                    groupLabel = curLabel,
-                    cleanText = clean.ifEmpty { starStripped },
-                    done = done,
+                    uid = "QT|$GROUP_FOCUS|$i|${entry.rawBody.hashCode()}",
+                    groupKey = GROUP_FOCUS,
+                    groupLabel = "Hôm nay",
+                    cleanText = cleanTitle.ifEmpty { starStripped },
+                    done = entry.done,
                     starred = starred,
-                    recencyRank = 10000 - lineIdx,
+                    recencyRank = focusBase - i,
                     remindAt = remindAt
                 )
             )
+        }
+
+        var waitRank = 10000
+        for (grp in doc.waitGroups) {
+            for ((i, entry) in grp.items.withIndex()) {
+                val (starred, starStripped) = stripStar(entry.rawBody)
+                val (cleanTitle, remindAt) = TaskReminderHelper.extractFromMarkdownBody(starStripped)
+                all.add(
+                    TaskWidgetItem(
+                        uid = "QT|${grp.key}|$i|${entry.rawBody.hashCode()}",
+                        groupKey = grp.key,
+                        groupLabel = grp.label,
+                        cleanText = cleanTitle.ifEmpty { starStripped },
+                        done = entry.done,
+                        starred = starred,
+                        recencyRank = waitRank--,
+                        remindAt = remindAt
+                    )
+                )
+            }
         }
 
         val filtered = when (groupFilter) {
@@ -645,217 +754,67 @@ object WidgetVaultHelper {
     ): Boolean {
         val clean = text.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
-        val normRemind = TaskReminderHelper.normalizeRemindAt(remindAt)
-
+        val body = applyStar(TaskReminderHelper.applyToMarkdownBody(clean, remindAt), starred)
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
         val effectiveKey = if (targetGroupKey.isBlank() || targetGroupKey == GROUP_ALL) GROUP_FOCUS else targetGroupKey
+
         if (effectiveKey == GROUP_FOCUS) {
-            val rawJson = VaultRepository.readDailyAnchorJsonFast(context)
-            val root = try { JSONObject(rawJson) } catch (_: Exception) { JSONObject() }
-            val arr = root.optJSONArray("customTasks") ?: JSONArray()
-            val newTask = JSONObject().apply {
-                put("id", "cf_${System.currentTimeMillis()}")
-                put("text", clean)
-                put("why", "")
-                put("status", "doing")
-                put("isCore", starred)
-                put("notePath", JSONObject.NULL)
-                put("subLabel", "")
-                put("subTasks", JSONArray())
-                if (normRemind.isNotEmpty()) put("remindAt", normRemind)
-            }
-            arr.put(newTask)
-            root.put("customTasks", arr)
-            return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
+            doc.focusItems.add(0, RawQuickTask(done = false, rawBody = body))
         } else {
-            return insertWarehouseTask(context, effectiveKey, clean, done = false, starred = starred, remindAt = normRemind)
+            val label = effectiveKey.removePrefix("WH:").ifBlank { "Việc chờ" }
+            val key = "WH:$label"
+            val grp = doc.waitGroups.find { it.key.equals(key, ignoreCase = true) }
+                ?: RawTaskGroup(key, label, isFocus = false).also { doc.waitGroups.add(it) }
+            grp.items.add(0, RawQuickTask(done = false, rawBody = body))
         }
-    }
-
-    private fun insertWarehouseTask(
-        context: Context,
-        sectionKey: String,
-        cleanText: String,
-        done: Boolean,
-        starred: Boolean,
-        remindAt: String = ""
-    ): Boolean {
-        val md = VaultRepository.readTaskWarehouseMdFast(context)
-        val lines = md.replace("\r\n", "\n").split("\n").toMutableList()
-        val sections = scanWarehouseSections(lines)
-        val targetSec = sections.find { it.key.equals(sectionKey, ignoreCase = true) } ?: sections.firstOrNull()
-        val box = if (done) "x" else " "
-        val withRemind = TaskReminderHelper.applyToMarkdownBody(cleanText, remindAt)
-        val formattedLine = "- [$box] ${applyStar(withRemind, starred)}"
-
-        if (targetSec != null) {
-            var insertAt = targetSec.headingLineIndex + 1
-            while (insertAt < lines.size && (lines[insertAt].trim().startsWith("*(") || lines[insertAt].trim().startsWith(">"))) {
-                insertAt++
-            }
-            lines.add(insertAt, formattedLine)
-        } else {
-            lines.add("## 📥 1. Hộp tiếp nhận (Chờ phân loại)")
-            lines.add(formattedLine)
-        }
-        return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-    }
-
-    private fun locateWarehouseLine(lines: List<String>, uid: String): Int {
-        val parts = uid.split("|")
-        if (parts.size < 3 || parts[0] != "TW") return -1
-        val lineIdx = parts[1].toIntOrNull() ?: -1
-        val bodyHash = parts[2].toIntOrNull()
-        if (lineIdx in lines.indices) {
-            val m = taskLineRegex.find(lines[lineIdx].trim())
-            if (m != null && (bodyHash == null || m.groupValues[2].trim().hashCode() == bodyHash)) {
-                return lineIdx
-            }
-        }
-        if (bodyHash != null) {
-            for ((i, ln) in lines.withIndex()) {
-                val m = taskLineRegex.find(ln.trim()) ?: continue
-                if (m.groupValues[2].trim().hashCode() == bodyHash) return i
-            }
-        }
-        return -1
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun toggleTaskDone(context: Context, uid: String): Boolean {
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    val curDone = obj.optString("status") == "done"
-                    obj.put("status", if (curDone) "doing" else "done")
-                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-                }
-            }
-            return false
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
-            val curDone = m.groupValues[1].equals("x", ignoreCase = true)
-            val body = m.groupValues[2].trim()
-            lines[idx] = "- [${if (curDone) " " else "x"}] $body"
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
-    }
-
-    fun toggleTaskStar(context: Context, uid: String): Boolean {
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    val rawTxt = obj.optString("text", "")
-                    val (hasPfx, clean) = stripStar(rawTxt)
-                    val curStar = obj.optBoolean("isCore", false) || hasPfx
-                    obj.put("isCore", !curStar)
-                    obj.put("text", clean)
-                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-                }
-            }
-            return false
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
-            val box = if (m.groupValues[1].equals("x", ignoreCase = true)) "x" else " "
-            val (curStar, clean) = stripStar(m.groupValues[2].trim())
-            lines[idx] = "- [$box] ${applyStar(clean, !curStar)}"
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        list[idx].done = !list[idx].done
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun setTaskDone(context: Context, uid: String, done: Boolean): Boolean {
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    obj.put("status", if (done) "done" else "doing")
-                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-                }
-            }
-            return false
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
-            val body = m.groupValues[2].trim()
-            lines[idx] = "- [${if (done) "x" else " "}] $body"
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        list[idx].done = done
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun setTaskRemindAt(context: Context, uid: String, remindAt: String): Boolean {
-        val norm = TaskReminderHelper.normalizeRemindAt(remindAt)
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    if (norm.isEmpty()) obj.remove("remindAt") else obj.put("remindAt", norm)
-                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-                }
-            }
-            return false
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
-            val box = if (m.groupValues[1].equals("x", ignoreCase = true)) "x" else " "
-            val (starred, starStripped) = stripStar(m.groupValues[2].trim())
-            val updatedBody = TaskReminderHelper.applyToMarkdownBody(starStripped, norm)
-            lines[idx] = "- [$box] ${applyStar(updatedBody, starred)}"
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        val (starred, starStripped) = stripStar(list[idx].rawBody)
+        val updated = TaskReminderHelper.applyToMarkdownBody(starStripped, remindAt)
+        list[idx].rawBody = applyStar(updated, starred)
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
+    }
+
+    fun toggleTaskStar(context: Context, uid: String): Boolean {
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        val (curStar, clean) = stripStar(list[idx].rawBody)
+        list[idx].rawBody = applyStar(clean, !curStar)
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun assignTaskToGroup(context: Context, uid: String, targetGroupKey: String): Boolean {
-        val current = findTaskByUid(context, uid, fastMirror = true) ?: return false
-        if (current.groupKey.equals(targetGroupKey, ignoreCase = true)) return true
-        if (!deleteTaskFromWidget(context, uid)) return false
-
-        return if (targetGroupKey == GROUP_FOCUS) {
-            val rawJson = VaultRepository.readDailyAnchorJsonFast(context)
-            val root = try { JSONObject(rawJson) } catch (_: Exception) { JSONObject() }
-            val arr = root.optJSONArray("customTasks") ?: JSONArray()
-            val newTask = JSONObject().apply {
-                put("id", "cf_${System.currentTimeMillis()}")
-                put("text", current.cleanText)
-                put("why", "")
-                put("status", if (current.done) "done" else "doing")
-                put("isCore", current.starred)
-                put("notePath", JSONObject.NULL)
-                put("subLabel", "")
-                put("subTasks", JSONArray())
-                if (current.remindAt.isNotEmpty()) put("remindAt", current.remindAt)
-            }
-            arr.put(newTask)
-            root.put("customTasks", arr)
-            VaultRepository.saveDailyAnchorJson(context, root.toString(2))
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (srcList, idx) = locateQuickTask(doc, uid) ?: return false
+        val moved = srcList.removeAt(idx)
+        if (targetGroupKey == GROUP_FOCUS) {
+            doc.focusItems.add(0, moved)
         } else {
-            insertWarehouseTask(context, targetGroupKey, current.cleanText, current.done, current.starred, current.remindAt)
+            val label = targetGroupKey.removePrefix("WH:").ifBlank { "Việc chờ" }
+            val key = "WH:$label"
+            val grp = doc.waitGroups.find { it.key.equals(key, ignoreCase = true) }
+                ?: RawTaskGroup(key, label, isFocus = false).also { doc.waitGroups.add(it) }
+            grp.items.add(0, moved)
         }
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun updateTaskFromWidget(
@@ -867,65 +826,21 @@ object WidgetVaultHelper {
     ): Boolean {
         val clean = newCleanText.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    obj.put("text", clean)
-                    obj.put("isCore", starred)
-                    if (remindAt != null) {
-                        val norm = TaskReminderHelper.normalizeRemindAt(remindAt)
-                        if (norm.isEmpty()) obj.remove("remindAt") else obj.put("remindAt", norm)
-                    }
-                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-                }
-            }
-            return false
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
-            val box = if (m.groupValues[1].equals("x", ignoreCase = true)) "x" else " "
-            val (_, prevBody) = stripStar(m.groupValues[2].trim())
-            val (_, existingRem) = TaskReminderHelper.extractFromMarkdownBody(prevBody)
-            val finalRem = if (remindAt != null) TaskReminderHelper.normalizeRemindAt(remindAt) else existingRem
-            val bodyWithRem = TaskReminderHelper.applyToMarkdownBody(clean, finalRem)
-            lines[idx] = "- [$box] ${applyStar(bodyWithRem, starred)}"
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        val (_, prevBody) = stripStar(list[idx].rawBody)
+        val (_, existingRem) = TaskReminderHelper.extractFromMarkdownBody(prevBody)
+        val finalRem = if (remindAt != null) TaskReminderHelper.normalizeRemindAt(remindAt) else existingRem
+        val bodyWithRem = TaskReminderHelper.applyToMarkdownBody(clean, finalRem)
+        list[idx].rawBody = applyStar(bodyWithRem, starred)
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun deleteTaskFromWidget(context: Context, uid: String): Boolean {
-        if (uid.startsWith("TF|")) {
-            val taskId = uid.removePrefix("TF|")
-            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
-            val arr = root.optJSONArray("customTasks") ?: return false
-            val nextArr = JSONArray()
-            var removed = false
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (!removed && obj.optString("id") == taskId) {
-                    removed = true
-                } else {
-                    nextArr.put(obj)
-                }
-            }
-            if (!removed) return false
-            root.put("customTasks", nextArr)
-            return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
-        } else if (uid.startsWith("TW|")) {
-            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
-            val idx = locateWarehouseLine(lines, uid)
-            if (idx < 0) return false
-            lines.removeAt(idx)
-            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
-        }
-        return false
+        val doc = parseQuickTasksDoc(VaultRepository.readQuickTasksMdFast(context))
+        val (list, idx) = locateQuickTask(doc, uid) ?: return false
+        list.removeAt(idx)
+        return VaultRepository.saveQuickTasksMd(context, serializeQuickTasksDoc(doc))
     }
 
     fun findTaskByUid(context: Context, uid: String, fastMirror: Boolean = false): TaskWidgetItem? {

@@ -517,7 +517,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
         appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.w_tasks_list)
         VaultRepository.syncFromExternalVaultAsync(
             context,
-            listOf(VaultRepository.REL_DAILY_ANCHOR, VaultRepository.REL_TASK_WAREHOUSE)
+            listOf(VaultRepository.REL_QUICK_TASKS)
         )
     }
 
@@ -764,8 +764,7 @@ class WidgetPackageUpdateReceiver : android.content.BroadcastReceiver() {
                 appCtx,
                 listOf(
                     VaultRepository.REL_QUICK_NOTES,
-                    VaultRepository.REL_DAILY_ANCHOR,
-                    VaultRepository.REL_TASK_WAREHOUSE
+                    VaultRepository.REL_QUICK_TASKS
                 )
             )
         }

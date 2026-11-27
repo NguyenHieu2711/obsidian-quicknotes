@@ -37,17 +37,17 @@ class QuickWidgetProvider : AppWidgetProvider() {
         val summaryLines = mutableListOf<String>()
         var doingCount = 0
         try {
-            val rawAnchor = VaultRepository.readDailyAnchorJson(context)
-            val tasks = JSONObject(rawAnchor).optJSONArray("customTasks")
-            if (tasks != null) {
-                for (i in 0 until tasks.length()) {
-                    val t = tasks.optJSONObject(i) ?: continue
-                    val done = t.optString("status") == "done"
-                    if (!done) {
-                        doingCount++
-                        if (summaryLines.size < 3) {
-                            summaryLines.add("○ ${t.optString("text")}")
-                        }
+            val tasks = WidgetVaultHelper.loadTasksForWidget(
+                context,
+                WidgetVaultHelper.GROUP_FOCUS,
+                WidgetVaultHelper.SORT_NEWEST,
+                fastMirror = true
+            )
+            for (t in tasks) {
+                if (!t.done) {
+                    doingCount++
+                    if (summaryLines.size < 3) {
+                        summaryLines.add("○ ${t.cleanText}")
                     }
                 }
             }

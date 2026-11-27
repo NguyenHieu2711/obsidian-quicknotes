@@ -698,8 +698,7 @@ class MainActivity : AppCompatActivity() {
         fun getFullVaultState(): String {
             val (connected, label) = VaultRepository.getVaultDisplayStatus(this@MainActivity)
             val quickNotesMd = VaultRepository.readQuickNotesMd(this@MainActivity)
-            val dailyAnchorJson = VaultRepository.readDailyAnchorJson(this@MainActivity)
-            val taskWarehouseMd = VaultRepository.readTaskWarehouseMd(this@MainActivity)
+            val quickTasksMd = VaultRepository.readQuickTasksMd(this@MainActivity)
             val obj = JSONObject().apply {
                 put("connected", connected)
                 put("vaultLabel", label)
@@ -707,8 +706,7 @@ class MainActivity : AppCompatActivity() {
                 put("lastModified", VaultRepository.getLatestVaultModifiedTimestamp(this@MainActivity))
                 put("appVersion", getEffectiveWebVersion())
                 put("quickNotesMd", quickNotesMd)
-                put("dailyAnchorJson", dailyAnchorJson)
-                put("taskWarehouseMd", taskWarehouseMd)
+                put("quickTasksMd", quickTasksMd)
                 put("tagsJson", VaultRepository.readVaultTagsJson(this@MainActivity))
                 put("linkPreviewsJson", VaultRepository.readLinkPreviewsJson(this@MainActivity))
             }
@@ -785,6 +783,11 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun saveQuickNotesMd(md: String): Boolean {
             return VaultRepository.saveQuickNotesMd(this@MainActivity, md)
+        }
+
+        @JavascriptInterface
+        fun saveQuickTasksMd(md: String): Boolean {
+            return VaultRepository.saveQuickTasksMd(this@MainActivity, md)
         }
 
         @JavascriptInterface

@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.6.0",
+    appVersion: "1.6.1",
 
     quickItems: [],
     noteStreams: [],
@@ -636,85 +636,163 @@
     }
   }
 
-  function parseDailyAnchor(jsonStr) {
-    try {
-      const obj = JSON.parse(jsonStr || "{}");
-      state.focusAnchorRaw = obj;
-      const arr = Array.isArray(obj.customTasks) ? obj.customTasks : [];
-      state.focusTasks = arr.map((t) => {
-        const ext = extractMarkdownReminder(t.text || "");
-        const remindAt = normalizeRemindAt(t.remindAt || "") || ext.remindAt;
-        return {
-          ...t,
-          id: t.id || makeId("cf"),
-          text: ext.cleanText || t.text || "",
-          remindAt: remindAt || "",
-          status: t.status === "done" ? "done" : "doing",
-          subTasks: Array.isArray(t.subTasks)
-            ? t.subTasks.map((st) => ({ id: st.id || makeId("st"), text: st.text || "", done: !!st.done }))
-            : []
-        };
-      });
-    } catch (_) {
-      state.focusAnchorRaw = { customTasks: [] };
-      state.focusTasks = [];
+  function parseQuickTasksMd(md) {
+    const lines = String(md || "").replace(/\r\n/g, "\n").split("\n");
+    const focus = [];
+    const wait = [];
+    let inFocus = true;
+    let curGroup = "Việc chờ";
+    let lastParent = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const tr = rawLine.trim();
+      if (!tr || tr === "---") continue;
+
+      if (tr.startsWith("# ") && !tr.startsWith("## ")) {
+        const h1 = tr.slice(2).trim();
+        lastParent = null;
+        if (/Hôm nay|Trọng tâm/i.test(h1)) {
+          inFocus = true;
+        } else {
+          inFocus = false;
+          curGroup = "Việc chờ";
+        }
+        continue;
+      }
+
+      if (tr.startsWith("## ") || tr.startsWith("### ")) {
+        const cleanGrp = tr.replace(/^#+\s*/, "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+        lastParent = null;
+        if (cleanGrp) {
+          inFocus = false;
+          curGroup = cleanGrp;
+        }
+        continue;
+      }
+
+      const subTaskM = rawLine.match(/^(\t+| {2,})-\s*\[([ xX])\]\s+(.+)$/);
+      if (subTaskM && lastParent) {
+        lastParent.subTasks = lastParent.subTasks || [];
+        lastParent.subTasks.push({
+          id: makeId("st"),
+          done: subTaskM[2].toLowerCase() === "x",
+          text: subTaskM[3].trim()
+        });
+        continue;
+      }
+      const subBulletM = rawLine.match(/^(\t+| {2,})-\s+(.+)$/);
+      if (subBulletM && lastParent) {
+        lastParent.subTasks = lastParent.subTasks || [];
+        lastParent.subTasks.push({ id: makeId("st"), done: false, text: subBulletM[2].trim() });
+        continue;
+      }
+
+      const m = tr.match(/^-\s*\[([ xX])\]\s+(.+)$/);
+      if (m) {
+        const done = m[1].toLowerCase() === "x";
+        const rawBody = m[2].trim();
+        const isStar = /^★\s*/.test(rawBody);
+        const noStar = rawBody.replace(/^★\s*/, "").trim();
+        const ext = extractMarkdownReminder(noStar);
+        if (inFocus) {
+          const item = {
+            id: makeId("cf"),
+            text: ext.cleanText || noStar,
+            why: "",
+            status: done ? "done" : "doing",
+            isCore: isStar,
+            notePath: null,
+            subLabel: "",
+            remindAt: ext.remindAt || "",
+            subTasks: []
+          };
+          focus.push(item);
+          lastParent = item;
+        } else {
+          const item = {
+            id: makeId("wh"),
+            group: curGroup || "Việc chờ",
+            done: done,
+            isCore: isStar,
+            text: rawBody,
+            cleanText: ext.cleanText || noStar,
+            remindAt: ext.remindAt || "",
+            subTasks: []
+          };
+          wait.push(item);
+          lastParent = item;
+        }
+      }
+    }
+
+    state.focusTasks = focus;
+    state.warehouseTasks = wait;
+  }
+
+  function serializeQuickTasksMd() {
+    const out = ["# 🎯 Hôm nay"];
+    for (const t of state.focusTasks) {
+      const box = t.status === "done" ? "x" : " ";
+      const starPfx = t.isCore ? "★ " : "";
+      const body = applyMarkdownReminder(String(t.text || "").replace(/^★\s*/, "").trim(), t.remindAt || "");
+      if (!body) continue;
+      out.push("- [" + box + "] " + starPfx + body);
+      for (const st of t.subTasks || []) {
+        if (!st || !String(st.text || "").trim()) continue;
+        out.push("\t- [" + (st.done ? "x" : " ") + "] " + String(st.text).trim());
+      }
+    }
+
+    out.push("# 📥 Việc chờ");
+    const defaultWait = state.warehouseTasks.filter((w) => !w.group || w.group === "Việc chờ");
+    const groupOrder = [];
+    const byGroup = {};
+    for (const w of state.warehouseTasks) {
+      if (!w.group || w.group === "Việc chờ") continue;
+      if (!byGroup[w.group]) {
+        byGroup[w.group] = [];
+        groupOrder.push(w.group);
+      }
+      byGroup[w.group].push(w);
+    }
+    const emitWait = (arr) => {
+      for (const w of arr) {
+        const box = w.done ? "x" : " ";
+        const starPfx = w.isCore ? "★ " : "";
+        const body = applyMarkdownReminder(String(w.cleanText || w.text || "").replace(/^★\s*/, "").trim(), w.remindAt || "");
+        if (!body) continue;
+        out.push("- [" + box + "] " + starPfx + body);
+        for (const st of w.subTasks || []) {
+          if (!st || !String(st.text || "").trim()) continue;
+          out.push("\t- [" + (st.done ? "x" : " ") + "] " + String(st.text).trim());
+        }
+      }
+    };
+    emitWait(defaultWait);
+    for (const g of groupOrder) {
+      out.push("## " + g);
+      emitWait(byGroup[g]);
+    }
+    return out.join("\n") + "\n";
+  }
+
+  function persistQuickTasksMd() {
+    const md = serializeQuickTasksMd();
+    if (hasNative && typeof window.AndroidBridge.saveQuickTasksMd === "function") {
+      window.AndroidBridge.saveQuickTasksMd(md);
+      state.lastKnownModified = window.AndroidBridge.getVaultModifiedTimestamp();
+    } else {
+      localStorage.setItem("oq_web_fallback_tasks_md", md);
     }
   }
 
   function persistDailyAnchor() {
-    const cleanedTasks = state.focusTasks.map((t) => {
-      const copy = { ...t };
-      const norm = normalizeRemindAt(copy.remindAt);
-      if (norm) copy.remindAt = norm;
-      else delete copy.remindAt;
-      return copy;
-    });
-    const payload = { ...state.focusAnchorRaw, customTasks: cleanedTasks };
-    const jsonStr = JSON.stringify(payload, null, 2);
-    if (hasNative) {
-      window.AndroidBridge.saveDailyAnchorJson(jsonStr);
-      state.lastKnownModified = window.AndroidBridge.getVaultModifiedTimestamp();
-    } else {
-      localStorage.setItem("oq_web_fallback_anchor", jsonStr);
-    }
-  }
-
-  function parseWarehouseMd(md) {
-    const lines = String(md || "").replace(/\r\n/g, "\n").split("\n");
-    state.warehouseRawLines = lines;
-    const tasks = [];
-    let currentGroup = "Hộp tiếp nhận";
-    for (let i = 0; i < lines.length; i++) {
-      const tr = lines[i].trim();
-      if (tr.startsWith("## ") || tr.startsWith("### ")) {
-        currentGroup = tr.replace(/^#+\s*/, "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
-        continue;
-      }
-      const m = tr.match(/^-\s*\[([ xX])\]\s+(.+)$/);
-      if (m) {
-        const rawBody = m[2].trim();
-        const ext = extractMarkdownReminder(rawBody);
-        tasks.push({
-          lineIndex: i,
-          group: currentGroup,
-          done: m[1].toLowerCase() === "x",
-          text: rawBody,
-          cleanText: ext.cleanText,
-          remindAt: ext.remindAt
-        });
-      }
-    }
-    state.warehouseTasks = tasks;
+    persistQuickTasksMd();
   }
 
   function persistWarehouseMd() {
-    const md = state.warehouseRawLines.join("\n").replace(/\n+$/, "") + "\n";
-    if (hasNative) {
-      window.AndroidBridge.saveTaskWarehouseMd(md);
-      state.lastKnownModified = window.AndroidBridge.getVaultModifiedTimestamp();
-    } else {
-      localStorage.setItem("oq_web_fallback_wh", md);
-    }
+    persistQuickTasksMd();
   }
 
   let didInitialBottomScroll = false;
@@ -739,8 +817,7 @@
         state.lastKnownModified = raw.lastModified || 0;
         state.appVersion = raw.appVersion || "1.0.2";
         parseQuickNotesMd(raw.quickNotesMd);
-        parseDailyAnchor(raw.dailyAnchorJson);
-        parseWarehouseMd(raw.taskWarehouseMd);
+        parseQuickTasksMd(raw.quickTasksMd || "# 🎯 Hôm nay\n# 📥 Việc chờ\n");
         try {
           const parsedTags = JSON.parse(raw.tagsJson || "[]");
           if (Array.isArray(parsedTags) && parsedTags.length > 0) {
@@ -762,8 +839,7 @@
       state.vaultConnected = true;
       state.vaultLabel = "Obsidian (Bản chính)";
       parseQuickNotesMd(localStorage.getItem("oq_web_fallback_md") || "");
-      parseDailyAnchor(localStorage.getItem("oq_web_fallback_anchor") || '{"customTasks":[]}');
-      parseWarehouseMd(localStorage.getItem("oq_web_fallback_wh") || "## 1. Hộp tiếp nhận\n");
+      parseQuickTasksMd(localStorage.getItem("oq_web_fallback_tasks_md") || "# 🎯 Hôm nay\n# 📥 Việc chờ\n");
     }
     applyTheme();
     renderAll();
@@ -974,8 +1050,8 @@
       }).join("");
     }
 
-    const pendingWh = state.warehouseTasks.filter((w) => !w.done && matchesQuery(w.text));
-    els.warehouseHdrLabel.textContent = "Kho chờ Task (" + pendingWh.length + ")";
+    const pendingWh = state.warehouseTasks.filter((w) => !w.done && matchesQuery(w.cleanText || w.text));
+    els.warehouseHdrLabel.textContent = "Việc chờ (" + pendingWh.length + ")";
     els.warehouseChevron.outerHTML = state.warehouseOpen
       ? '<svg id="warehouseChevron" class="ic-sm" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>'
       : '<svg id="warehouseChevron" class="ic-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -989,7 +1065,7 @@
         let lastGrp = "";
         const html = [];
         for (const w of pendingWh) {
-          if (w.group !== lastGrp) {
+          if (w.group && w.group !== "Việc chờ" && w.group !== lastGrp) {
             lastGrp = w.group;
             html.push('<div class="wh-group-title">' + escHtml(w.group) + "</div>");
           }
@@ -1000,12 +1076,12 @@
           html.push(
             '<div class="task-card" style="padding:11px 12px;margin-bottom:8px;">' +
               '<div class="tc-top-row">' +
-                '<button class="task-node-btn" data-check-wh="' + w.lineIndex + '" type="button"></button>' +
-                '<div class="tc-body-col" data-wh-menu="' + w.lineIndex + '">' +
+                '<button class="task-node-btn" data-check-wh="' + escHtml(w.id) + '" type="button"></button>' +
+                '<div class="tc-body-col" data-wh-menu="' + escHtml(w.id) + '">' +
                   '<span class="tc-label" style="font-size:14.5px;">' + escHtml(w.cleanText || w.text) + "</span>" +
                   wRemHtml +
                 "</div>" +
-                '<button class="promote-btn" data-promote-wh="' + w.lineIndex + '" type="button">' + ICONS.arrowUpRight + "<span>Hôm nay</span></button>" +
+                '<button class="promote-btn" data-promote-wh="' + escHtml(w.id) + '" type="button">' + ICONS.arrowUpRight + "<span>Hôm nay</span></button>" +
               "</div>" +
             "</div>"
           );
@@ -1146,16 +1222,22 @@
   }
 
   function insertIntoWarehouse(taskText) {
-    const idx = state.warehouseRawLines.findIndex((l) => /Hộp tiếp nhận/i.test(l));
-    if (idx >= 0) {
-      let ins = idx + 1;
-      while (ins < state.warehouseRawLines.length && state.warehouseRawLines[ins].trim().startsWith("*(")) ins++;
-      state.warehouseRawLines.splice(ins, 0, "- [ ] " + taskText);
-    } else {
-      state.warehouseRawLines.push("- [ ] " + taskText);
-    }
-    parseWarehouseMd(state.warehouseRawLines.join("\n"));
-    persistWarehouseMd();
+    const rawBody = String(taskText || "").trim();
+    if (!rawBody) return;
+    const isStar = /^★\s*/.test(rawBody);
+    const noStar = rawBody.replace(/^★\s*/, "").trim();
+    const ext = extractMarkdownReminder(noStar);
+    state.warehouseTasks.unshift({
+      id: makeId("wh"),
+      group: "Việc chờ",
+      done: false,
+      isCore: isStar,
+      text: rawBody,
+      cleanText: ext.cleanText || noStar,
+      remindAt: ext.remindAt || "",
+      subTasks: []
+    });
+    persistQuickTasksMd();
   }
 
   function openStreamItemMoveSheet(sourceStream, item) {
@@ -1480,25 +1562,21 @@
   }
 
   function openWarehouseTaskSheet(wTask) {
-    let html = '<div class="sheet-title">' + escHtml(wTask.group || "Kho chờ Task") + "</div>";
+    let html = '<div class="sheet-title">' + escHtml(wTask.group || "Việc chờ") + "</div>";
     html += '<input id="editWhTitleInp" class="modal-input" type="text" value="' + escHtml(wTask.cleanText || wTask.text) + '" />';
     html += buildSheetRemindHtml(wTask.remindAt || "");
     html += '<button id="btnSaveWhTitle" class="primary-btn" style="margin-bottom:10px;" type="button">Lưu thay đổi</button>';
-    html += '<button id="btnWhPromoteSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.arrowUpRight + '<span>Đưa lên Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
+    html += '<button id="btnWhPromoteSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.arrowUpRight + '<span>Đưa lên Hôm nay</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button id="btnWhDeleteSheet" class="sheet-row danger" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa công việc</span></span></button>';
 
     openSheet(html);
 
-    function commitWarehouseLine(newTitle, newRemind) {
-      const idx = wTask.lineIndex;
-      if (idx < 0 || idx >= state.warehouseRawLines.length) return;
-      const box = wTask.done ? "x" : " ";
-      const hasStar = /^★\s*/.test(wTask.text || "");
+    function commitWarehouseEdit(newTitle, newRemind) {
       const bodyClean = String(newTitle || "").replace(/^★\s*/, "").trim();
-      const withRem = applyMarkdownReminder(bodyClean, newRemind);
-      state.warehouseRawLines[idx] = "- [" + box + "] " + (hasStar ? "★ " : "") + withRem;
-      parseWarehouseMd(state.warehouseRawLines.join("\n"));
-      persistWarehouseMd();
+      if (bodyClean) wTask.cleanText = bodyClean;
+      wTask.remindAt = normalizeRemindAt(newRemind);
+      wTask.text = applyMarkdownReminder(wTask.cleanText, wTask.remindAt);
+      persistQuickTasksMd();
       renderAll();
     }
 
@@ -1506,7 +1584,7 @@
       vibrate(10);
       const curInp = document.getElementById("editWhTitleInp");
       const titleNow = curInp ? curInp.value.trim() : (wTask.cleanText || wTask.text);
-      commitWarehouseLine(titleNow || wTask.cleanText || wTask.text, nextVal);
+      commitWarehouseEdit(titleNow || wTask.cleanText || wTask.text, nextVal);
       closeSheet();
       const b = formatReminderBadge(nextVal);
       showToast(b ? "Đã hẹn nhắc " + b.label : "Đã xóa hẹn giờ");
@@ -1514,31 +1592,22 @@
 
     document.getElementById("btnSaveWhTitle").addEventListener("click", () => {
       const v = document.getElementById("editWhTitleInp").value.trim();
-      if (v) commitWarehouseLine(v, wTask.remindAt || "");
+      if (v) commitWarehouseEdit(v, wTask.remindAt || "");
       closeSheet();
     });
     document.getElementById("btnWhPromoteSheet").addEventListener("click", () => {
-      const idx = wTask.lineIndex;
-      if (idx >= 0 && idx < state.warehouseRawLines.length) {
-        state.warehouseRawLines.splice(idx, 1);
-        parseWarehouseMd(state.warehouseRawLines.join("\n"));
-        persistWarehouseMd();
-      }
+      state.warehouseTasks = state.warehouseTasks.filter((x) => x.id !== wTask.id);
       state.focusTasks.unshift({
         id: makeId("cf"), text: wTask.cleanText || wTask.text, why: "", status: "doing",
-        isCore: false, notePath: null, subLabel: "", subTasks: [], remindAt: wTask.remindAt || ""
+        isCore: !!wTask.isCore, notePath: null, subLabel: "", subTasks: wTask.subTasks || [], remindAt: wTask.remindAt || ""
       });
-      persistDailyAnchor(); closeSheet(); renderAll();
-      showToast("Đã đưa lên Trọng tâm hôm nay");
+      persistQuickTasksMd(); closeSheet(); renderAll();
+      showToast("Đã đưa lên Hôm nay");
     });
     document.getElementById("btnWhDeleteSheet").addEventListener("click", () => {
-      const idx = wTask.lineIndex;
-      if (idx >= 0 && idx < state.warehouseRawLines.length) {
-        state.warehouseRawLines.splice(idx, 1);
-        parseWarehouseMd(state.warehouseRawLines.join("\n"));
-        persistWarehouseMd();
-        renderAll();
-      }
+      state.warehouseTasks = state.warehouseTasks.filter((x) => x.id !== wTask.id);
+      persistQuickTasksMd();
+      renderAll();
       closeSheet();
     });
   }
@@ -2130,37 +2199,35 @@
 
     const checkWh = e.target.closest("[data-check-wh]");
     if (checkWh) {
-      const lnIdx = parseInt(checkWh.getAttribute("data-check-wh"), 10);
-      if (state.warehouseRawLines[lnIdx]) {
+      const whId = checkWh.getAttribute("data-check-wh");
+      const wTask = state.warehouseTasks.find((w) => w.id === whId);
+      if (wTask) {
         vibrate(12);
-        state.warehouseRawLines[lnIdx] = state.warehouseRawLines[lnIdx].replace("- [ ]", "- [x]");
-        parseWarehouseMd(state.warehouseRawLines.join("\n"));
-        persistWarehouseMd(); renderAll();
+        wTask.done = true;
+        persistQuickTasksMd(); renderAll();
       }
       return;
     }
     const whMenu = e.target.closest("[data-wh-menu]");
     if (whMenu) {
-      const lnIdx = parseInt(whMenu.getAttribute("data-wh-menu"), 10);
-      const wTask = state.warehouseTasks.find((w) => w.lineIndex === lnIdx);
+      const whId = whMenu.getAttribute("data-wh-menu");
+      const wTask = state.warehouseTasks.find((w) => w.id === whId);
       if (wTask) openWarehouseTaskSheet(wTask);
       return;
     }
     const promWh = e.target.closest("[data-promote-wh]");
     if (promWh) {
-      const lnIdx = parseInt(promWh.getAttribute("data-promote-wh"), 10);
-      const wTask = state.warehouseTasks.find((w) => w.lineIndex === lnIdx);
+      const whId = promWh.getAttribute("data-promote-wh");
+      const wTask = state.warehouseTasks.find((w) => w.id === whId);
       if (wTask) {
         vibrate(14);
-        state.warehouseRawLines.splice(lnIdx, 1);
-        parseWarehouseMd(state.warehouseRawLines.join("\n"));
-        persistWarehouseMd();
+        state.warehouseTasks = state.warehouseTasks.filter((x) => x.id !== whId);
         state.focusTasks.unshift({
           id: makeId("cf"), text: wTask.cleanText || wTask.text, why: "", status: "doing",
-          isCore: false, notePath: null, subLabel: "", subTasks: [], remindAt: wTask.remindAt || ""
+          isCore: !!wTask.isCore, notePath: null, subLabel: "", subTasks: wTask.subTasks || [], remindAt: wTask.remindAt || ""
         });
-        persistDailyAnchor(); renderAll();
-        showToast("Đã đưa lên Trọng tâm hôm nay");
+        persistQuickTasksMd(); renderAll();
+        showToast("Đã đưa lên Hôm nay");
       }
     }
   });

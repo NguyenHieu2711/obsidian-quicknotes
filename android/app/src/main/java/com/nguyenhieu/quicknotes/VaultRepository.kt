@@ -33,6 +33,7 @@ object VaultRepository {
     const val REL_NOTES_DIR = "0. Inbox/⚡ Ghi nhanh"
     const val QUICK_FILE_NAME = "⚡ Ghi nhanh.md"
     const val REL_QUICK_NOTES = "0. Inbox/⚡ Quick Notes.md"
+    const val REL_QUICK_TASKS = "0. Inbox/✅ Quick Tasks.md"
     const val REL_DAILY_ANCHOR = "9. System/99. Nhà kho chứa Scripts Dataview/Backup/daily-focus-anchor.json"
     const val REL_TASK_WAREHOUSE = "1. Actions/📁 0. Kế hoạch & Lịch trình/✅ Nhà kho chứa Task.md"
     const val REL_TAGS_INDEX = ".obsidian/plugins/.quicknotes-sync/tags-index.json"
@@ -45,6 +46,11 @@ object VaultRepository {
         ## Những điều cốt lõi bản thân
         # 📥 Kho lưu trữ chung
         ## Kho Notes chung
+    """.trimIndent() + "\n"
+
+    private val DEFAULT_QUICK_TASKS_MD = """
+        # 🎯 Hôm nay
+        # 📥 Việc chờ
     """.trimIndent() + "\n"
 
     private val DEFAULT_DAILY_ANCHOR_JSON = """
@@ -192,9 +198,8 @@ object VaultRepository {
     fun getLatestVaultModifiedTimestamp(context: Context): Long {
         val mDir = mirrorDir(context)
         val m1 = File(mDir, REL_QUICK_NOTES).takeIf { it.exists() }?.lastModified() ?: 0L
-        val m2 = File(mDir, REL_DAILY_ANCHOR).takeIf { it.exists() }?.lastModified() ?: 0L
-        val m3 = File(mDir, REL_TASK_WAREHOUSE).takeIf { it.exists() }?.lastModified() ?: 0L
-        val mirrorMax = maxOf(m1, m2, m3)
+        val m2 = File(mDir, REL_QUICK_TASKS).takeIf { it.exists() }?.lastModified() ?: 0L
+        val mirrorMax = maxOf(m1, m2)
 
         val fsDir = getSavedVaultFsDir(context) ?: return mirrorMax
         val notesFolder = File(fsDir, REL_NOTES_DIR)
@@ -203,9 +208,8 @@ object VaultRepository {
                 ?.maxOfOrNull { it.lastModified() } ?: 0L
         } else 0L
         val f1 = File(fsDir, REL_QUICK_NOTES).takeIf { it.exists() }?.lastModified() ?: 0L
-        val f2 = File(fsDir, REL_DAILY_ANCHOR).takeIf { it.exists() }?.lastModified() ?: 0L
-        val f3 = File(fsDir, REL_TASK_WAREHOUSE).takeIf { it.exists() }?.lastModified() ?: 0L
-        return maxOf(mirrorMax, notesFolderMax, f1, f2, f3)
+        val f2 = File(fsDir, REL_QUICK_TASKS).takeIf { it.exists() }?.lastModified() ?: 0L
+        return maxOf(mirrorMax, notesFolderMax, f1, f2)
     }
 
     private fun mergeSyncthingConflictsIfAny(vaultRoot: File) {
@@ -339,7 +343,7 @@ object VaultRepository {
         // Immediate <20ms list-only refresh for the exact widget kind that changed!
         when (relPath) {
             REL_QUICK_NOTES -> DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_NOTES)
-            REL_DAILY_ANCHOR, REL_TASK_WAREHOUSE -> DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_TASKS)
+            REL_QUICK_TASKS, REL_DAILY_ANCHOR, REL_TASK_WAREHOUSE -> DualWidgetContract.refreshListOnly(appCtx, DualWidgetContract.KIND_TASKS)
         }
 
         // Flush to real Syncthing Vault file asynchronously (never blocks Widget UI!)
@@ -410,6 +414,7 @@ object VaultRepository {
                 }
                 val fresh = when (rel) {
                     REL_QUICK_NOTES -> readQuickNotesMd(appCtx)
+                    REL_QUICK_TASKS -> readQuickTasksMd(appCtx)
                     REL_DAILY_ANCHOR -> readRelFile(appCtx, rel, DEFAULT_DAILY_ANCHOR_JSON)
                     REL_TASK_WAREHOUSE -> readRelFile(appCtx, rel, DEFAULT_TASK_WAREHOUSE_MD)
                     else -> continue
@@ -780,6 +785,14 @@ object VaultRepository {
         return true
     }
 
+    fun readQuickTasksMd(context: Context): String = readRelFile(context, REL_QUICK_TASKS, DEFAULT_QUICK_TASKS_MD)
+    fun readQuickTasksMdFast(context: Context): String = readRelFileFastMirror(context, REL_QUICK_TASKS, DEFAULT_QUICK_TASKS_MD)
+    fun saveQuickTasksMd(context: Context, md: String): Boolean {
+        val ok = writeRelFile(context, REL_QUICK_TASKS, md)
+        if (ok) TaskReminderScheduler.syncAllAlarms(context)
+        return ok
+    }
+
     fun readDailyAnchorJson(context: Context): String = readRelFile(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun readDailyAnchorJsonFast(context: Context): String = readRelFileFastMirror(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun saveDailyAnchorJson(context: Context, jsonStr: String): Boolean {
@@ -1030,37 +1043,10 @@ object VaultRepository {
                 return saveQuickNotesMd(context, lines.joinToString("\n").trimEnd() + "\n")
             }
             "focus_task" -> {
-                val rawJson = readDailyAnchorJson(context)
-                val root = try { JSONObject(rawJson) } catch (_: Exception) { JSONObject() }
-                val arr = root.optJSONArray("customTasks") ?: JSONArray()
-                val newTask = JSONObject().apply {
-                    put("id", "cf_${System.currentTimeMillis()}")
-                    put("text", clean)
-                    put("why", "")
-                    put("status", "doing")
-                    put("isCore", false)
-                    put("notePath", JSONObject.NULL)
-                    put("subLabel", "")
-                    put("subTasks", JSONArray())
-                }
-                arr.put(newTask)
-                root.put("customTasks", arr)
-                return saveDailyAnchorJson(context, root.toString(2))
+                return WidgetVaultHelper.addTaskFromWidget(context, clean, WidgetVaultHelper.GROUP_FOCUS, starred = false)
             }
             "warehouse_task" -> {
-                val md = readTaskWarehouseMd(context)
-                val lines = md.lines().toMutableList()
-                val inboxIdx = lines.indexOfFirst { it.contains("Hộp tiếp nhận", ignoreCase = true) }
-                if (inboxIdx >= 0) {
-                    var insertAt = inboxIdx + 1
-                    while (insertAt < lines.size && lines[insertAt].trim().startsWith("*(")) {
-                        insertAt++
-                    }
-                    lines.add(insertAt, "- [ ] $clean")
-                } else {
-                    lines.add("- [ ] $clean")
-                }
-                return saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
+                return WidgetVaultHelper.addTaskFromWidget(context, clean, WidgetVaultHelper.GROUP_WAIT, starred = false)
             }
         }
         return false
