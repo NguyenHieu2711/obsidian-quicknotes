@@ -957,7 +957,7 @@ class WidgetActionActivity : Activity() {
             closeWindowNow()
             return
         }
-        val isStarred = note.starred
+        var isStarred = note.starred
         val card = makeSheetCard()
 
         val editBox = makeAiryEditBox(
@@ -986,6 +986,32 @@ class WidgetActionActivity : Activity() {
             }
         )
 
+        val starIconIv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        val starBtn = FrameLayout(this).apply {
+            addView(starIconIv, FrameLayout.LayoutParams(dp(16), dp(16)).apply { gravity = Gravity.CENTER })
+        }
+        fun syncStarBtnStyle() {
+            starIconIv.setImageResource(if (isStarred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off)
+            starBtn.background = GradientDrawable().apply {
+                setColor(if (isStarred) Color.parseColor("#2E2716") else Color.parseColor("#222632"))
+                setStroke(dp(1), if (isStarred) Color.parseColor("#FBBF24") else Color.parseColor("#31384A"))
+                cornerRadius = dp(9).toFloat()
+            }
+        }
+        syncStarBtnStyle()
+        starBtn.setOnClickListener {
+            isStarred = !isStarred
+            syncStarBtnStyle()
+        }
+        actRow.addView(
+            starBtn,
+            LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                leftMargin = dp(7)
+            }
+        )
+
         val groupChipLabel = if (note.isUnassigned) "Đổi nhóm ▾" else "${note.groupLabel} ▾"
         actRow.addView(
             TextView(this).apply {
@@ -993,7 +1019,7 @@ class WidgetActionActivity : Activity() {
                 textSize = 12f
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(170)
+                maxWidth = dp(145)
                 setTextColor(Color.parseColor("#38BDF8"))
                 background = GradientDrawable().apply {
                     setColor(Color.parseColor("#16283B"))
@@ -1007,7 +1033,7 @@ class WidgetActionActivity : Activity() {
                 }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(8)
+                leftMargin = dp(7)
             }
         )
 

@@ -12,6 +12,8 @@ import android.net.Uri
 import android.os.Build
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.view.View
 import android.widget.RemoteViews
@@ -381,6 +383,25 @@ private class NotesRemoteViewsFactory(
         }.trim()
     }
 
+    private fun formatNoteTextWithEndStar(text: String, starred: Boolean): CharSequence {
+        if (!starred) return text
+        val full = "$text ★"
+        val sp = SpannableString(full)
+        sp.setSpan(
+            ForegroundColorSpan(Color.parseColor("#FBBF24")),
+            full.length - 1,
+            full.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        sp.setSpan(
+            RelativeSizeSpan(0.88f),
+            full.length - 1,
+            full.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return sp
+    }
+
     override fun getViewAt(position: Int): RemoteViews? {
         if (position !in items.indices) return null
         val item = items[position]
@@ -391,14 +412,16 @@ private class NotesRemoteViewsFactory(
 
         if (extracted == null) {
             rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
-            rv.setTextViewText(R.id.wn_text, item.cleanText)
+            rv.setTextViewText(R.id.wn_text, formatNoteTextWithEndStar(item.cleanText, item.starred))
         } else {
             val surrounding = formatWidgetNoteText(extracted.surroundingText)
             if (surrounding.isNotEmpty()) {
                 rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
-                rv.setTextViewText(R.id.wn_text, surrounding)
+                rv.setTextViewText(R.id.wn_text, formatNoteTextWithEndStar(surrounding, item.starred))
+                rv.setViewVisibility(R.id.wn_embed_star, View.GONE)
             } else {
                 rv.setViewVisibility(R.id.wn_text, View.GONE)
+                rv.setViewVisibility(R.id.wn_embed_star, if (item.starred) View.VISIBLE else View.GONE)
             }
 
             val pObj = previewsRoot.optJSONObject(extracted.url)
@@ -442,21 +465,6 @@ private class NotesRemoteViewsFactory(
             }
         }
 
-        if (item.isUnassigned) {
-            rv.setTextViewText(R.id.wn_group_chip, "+ Gắn nhóm")
-            rv.setTextColor(R.id.wn_group_chip, Color.parseColor("#38BDF8"))
-            rv.setInt(R.id.wn_group_chip, "setBackgroundResource", R.drawable.widget_tag_chip_bg)
-        } else {
-            rv.setTextViewText(R.id.wn_group_chip, item.groupLabel)
-            rv.setTextColor(R.id.wn_group_chip, Color.parseColor("#A5B1CC"))
-            rv.setInt(R.id.wn_group_chip, "setBackgroundResource", R.drawable.widget_tag_chip_neutral_bg)
-        }
-
-        rv.setImageViewResource(
-            R.id.wn_star,
-            if (item.starred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off
-        )
-
         val editFillIntent = Intent().apply {
             putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_NOTE)
             putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
@@ -466,20 +474,6 @@ private class NotesRemoteViewsFactory(
         if (extracted != null) {
             rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
         }
-        rv.setOnClickFillInIntent(
-            R.id.wn_group_chip,
-            Intent().apply {
-                putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_ASSIGN_NOTE_GROUP)
-                putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
-            }
-        )
-        rv.setOnClickFillInIntent(
-            R.id.wn_star,
-            Intent().apply {
-                putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_TOGGLE_NOTE_STAR)
-                putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
-            }
-        )
 
         return rv
     }
