@@ -1524,7 +1524,10 @@ body.keyboard-open .bottom-bar {
 }
 
 .quick-item.bookmark-only {
-  padding: 8px 10px 8px 12px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 6px;
   align-items: center;
 }
 
@@ -1537,11 +1540,14 @@ body.keyboard-open .bottom-bar {
 }
 
 .note-entry.bookmark-only {
-  padding: 7px 9px 7px 11px;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .note-entry.bookmark-only .ne-lead-row {
   align-items: center;
+  gap: 6px;
 }
 
 .note-entry.bookmark-only .item-lead-dot,
@@ -1549,10 +1555,40 @@ body.keyboard-open .bottom-bar {
   margin-top: 0;
 }
 
+.quick-item.bookmark-only.holding-focus .notion-bookmark-card,
+.note-entry.bookmark-only.holding-focus .notion-bookmark-card {
+  border-color: var(--accent) !important;
+}
+
 .quick-list.chat-mode .quick-item.has-bookmark,
 .stream-list.chat-mode .note-entry.has-bookmark {
   width: 90%;
   max-width: 90%;
+}
+
+.quick-list.chat-mode .quick-item.bookmark-only,
+.stream-list.chat-mode .note-entry.bookmark-only {
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.quick-list.chat-mode .quick-item.has-bookmark:not(.bookmark-only),
+.stream-list.chat-mode .note-entry.has-bookmark:not(.bookmark-only),
+.quick-item.has-bookmark:not(.bookmark-only),
+.note-entry.has-bookmark:not(.bookmark-only) {
+  padding: 6px;
+}
+
+.quick-item.has-bookmark:not(.bookmark-only) .qi-text,
+.note-entry.has-bookmark:not(.bookmark-only) .ne-text {
+  padding: 2px 5px 0 5px;
+}
+
+.quick-item.has-bookmark:not(.bookmark-only) .nb-stack,
+.note-entry.has-bookmark:not(.bookmark-only) .nb-stack {
+  margin-top: 5px;
 }
 
 .notion-bookmark-card {

@@ -14,19 +14,22 @@
         android:layout_height="wrap_content"
         android:background="@drawable/widget_bubble_bg"
         android:orientation="vertical"
-        android:paddingStart="9dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="9dp"
-        android:paddingBottom="8dp">
+        android:paddingStart="5dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="5dp"
+        android:paddingBottom="5dp">
 
         <TextView
             android:id="@+id/wn_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
+            android:layout_marginBottom="5dp"
             android:ellipsize="end"
             android:lineSpacingExtra="1.5dp"
             android:maxLines="2"
+            android:paddingStart="4dp"
+            android:paddingTop="1dp"
+            android:paddingEnd="4dp"
             android:textColor="#EDF1F8"
             android:textSize="13sp"
             android:visibility="gone" />

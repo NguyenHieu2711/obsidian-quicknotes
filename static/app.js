@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.6.7",
+    appVersion: "1.6.8",
 
     quickItems: [],
     noteStreams: [],
@@ -928,7 +928,8 @@
       const childrenHtml = (it.children && it.children.length)
         ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + renderRichContentBlock(c, false, "ne-child-txt").html + "</div>").join("") + "</div>"
         : "";
-      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly ? " bookmark-only" : "");
+      const hasChildren = !!(it.children && it.children.length);
+      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly && !hasChildren ? " bookmark-only" : "");
       return (
         '<div class="quick-item' + bmClass + '" data-id="' + it.id + '">' +
           leadMarker +
@@ -981,7 +982,8 @@
       const subHtml = (it.children && it.children.length)
         ? '<div class="ne-children">' + it.children.map((c) => '<div class="ne-child">' + renderRichContentBlock(c, false, "ne-child-txt").html + "</div>").join("") + "</div>"
         : "";
-      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly ? " bookmark-only" : "");
+      const hasChildren = !!(it.children && it.children.length);
+      const bmClass = (content.hasBookmark ? " has-bookmark" : "") + (content.bookmarkOnly && !hasChildren ? " bookmark-only" : "");
       return (
         '<div class="note-entry' + bmClass + '" data-entry-id="' + it.id + '" data-stream-id="' + curStream.id + '">' +
           '<div class="ne-lead-row">' +

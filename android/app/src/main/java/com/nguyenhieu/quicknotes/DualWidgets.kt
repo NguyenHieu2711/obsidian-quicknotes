@@ -407,20 +407,24 @@ private class NotesRemoteViewsFactory(
         val item = items[position]
 
         val extracted = extractFirstLink(item.cleanText)
-        val layoutRes = if (extracted == null) R.layout.widget_item_note else R.layout.widget_item_note_embed
+        val surrounding = if (extracted != null) formatWidgetNoteText(extracted.surroundingText) else ""
+        val isEmbedOnly = extracted != null && surrounding.isEmpty()
+        val layoutRes = when {
+            extracted == null -> R.layout.widget_item_note
+            isEmbedOnly -> R.layout.widget_item_note_embed_only
+            else -> R.layout.widget_item_note_embed
+        }
         val rv = RemoteViews(context.packageName, layoutRes)
 
         if (extracted == null) {
             rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
             rv.setTextViewText(R.id.wn_text, formatNoteTextWithEndStar(item.cleanText, item.starred))
         } else {
-            val surrounding = formatWidgetNoteText(extracted.surroundingText)
-            if (surrounding.isNotEmpty()) {
+            if (!isEmbedOnly) {
                 rv.setViewVisibility(R.id.wn_text, View.VISIBLE)
                 rv.setTextViewText(R.id.wn_text, formatNoteTextWithEndStar(surrounding, item.starred))
                 rv.setViewVisibility(R.id.wn_embed_star, View.GONE)
             } else {
-                rv.setViewVisibility(R.id.wn_text, View.GONE)
                 rv.setViewVisibility(R.id.wn_embed_star, if (item.starred) View.VISIBLE else View.GONE)
             }
 
@@ -469,17 +473,21 @@ private class NotesRemoteViewsFactory(
             putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_NOTE)
             putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
         }
-        rv.setOnClickFillInIntent(R.id.wn_bubble_box, editFillIntent)
-        rv.setOnClickFillInIntent(R.id.wn_text, editFillIntent)
-        if (extracted != null) {
+        if (isEmbedOnly) {
             rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
+        } else {
+            rv.setOnClickFillInIntent(R.id.wn_bubble_box, editFillIntent)
+            rv.setOnClickFillInIntent(R.id.wn_text, editFillIntent)
+            if (extracted != null) {
+                rv.setOnClickFillInIntent(R.id.wn_embed_card, editFillIntent)
+            }
         }
 
         return rv
     }
 
     override fun getLoadingView(): RemoteViews? = null
-    override fun getViewTypeCount(): Int = 2
+    override fun getViewTypeCount(): Int = 3
     override fun getItemId(position: Int): Long = items.getOrNull(position)?.uid?.hashCode()?.toLong() ?: position.toLong()
     override fun hasStableIds(): Boolean = true
 }
