@@ -1,22 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@android:id/background"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
-
-    <!-- 4dp minimum inset keeps the 13dp card cleanly inside Samsung One UI's ~26dp host corner mask -->
-    <TextView
-        android:layout_width="1dp"
-        android:layout_height="1dp" />
-
-    <LinearLayout
-        android:id="@+id/widget_root"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_margin="4dp"
-        android:background="@drawable/widget_bg"
-        android:orientation="vertical"
-        android:padding="10dp">
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -77,5 +66,4 @@
         android:textColor="#94A3B8"
         android:textSize="12.5sp" />
 
-    </LinearLayout>
-</FrameLayout>
+</LinearLayout>
