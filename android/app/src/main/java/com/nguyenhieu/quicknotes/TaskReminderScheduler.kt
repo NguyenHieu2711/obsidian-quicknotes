@@ -216,39 +216,14 @@ object TaskReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val snooze15Intent = Intent(appCtx, TaskReminderReceiver::class.java).apply {
-            action = ACTION_SNOOZE_15M
-            putExtra(EXTRA_TASK_UID, uid)
-            putExtra(EXTRA_NOTIF_ID, notifId)
-        }
-        val snooze15Pi = PendingIntent.getBroadcast(
-            appCtx,
-            notifId + 3,
-            snooze15Intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val snooze1hIntent = Intent(appCtx, TaskReminderReceiver::class.java).apply {
-            action = ACTION_SNOOZE_1H
-            putExtra(EXTRA_TASK_UID, uid)
-            putExtra(EXTRA_NOTIF_ID, notifId)
-        }
-        val snooze1hPi = PendingIntent.getBroadcast(
-            appCtx,
-            notifId + 4,
-            snooze1hIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val hhmm = remindAt.substringAfter(" ", "").ifBlank { remindAt }
-        val subtitle = if (hhmm.isNotBlank()) "$displayGroup · $hhmm" else displayGroup
+        val dateTimeLabel = TaskReminderHelper.formatNotificationDateTime(remindAt)
 
         val notification = NotificationCompat.Builder(appCtx, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_w_task_badge)
-            .setColor(Color.parseColor("#38BDF8"))
+            .setColor(Color.parseColor("#22C55E"))
+            .setShowWhen(false)
             .setContentTitle(displayTitle)
-            .setContentText(subtitle)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(displayTitle).setSummaryText(subtitle))
+            .setContentText(dateTimeLabel)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -256,8 +231,6 @@ object TaskReminderScheduler {
             .setAutoCancel(true)
             .setContentIntent(contentPi)
             .addAction(0, "✓ Hoàn thành", donePi)
-            .addAction(0, "Hoãn 15p", snooze15Pi)
-            .addAction(0, "Hoãn 1 giờ", snooze1hPi)
             .build()
 
         val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

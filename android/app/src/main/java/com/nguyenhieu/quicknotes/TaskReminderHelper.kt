@@ -135,4 +135,32 @@ object TaskReminderHelper {
         }
         return Pair(label, overdue)
     }
+
+    fun formatNotificationDateTime(remindAtRaw: String?): String {
+        val triggerMs = parseTriggerMillis(remindAtRaw) ?: return remindAtRaw?.trim().orEmpty()
+        val targetCal = Calendar.getInstance().apply { timeInMillis = triggerMs }
+        val todayCal = Calendar.getInstance()
+        val tomorrowCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }
+
+        val hhmm = String.format(
+            Locale.US,
+            "%02d:%02d",
+            targetCal.get(Calendar.HOUR_OF_DAY),
+            targetCal.get(Calendar.MINUTE)
+        )
+        val sameYear = targetCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR)
+        val isToday = sameYear && targetCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR)
+        val isTomorrow = targetCal.get(Calendar.YEAR) == tomorrowCal.get(Calendar.YEAR) &&
+            targetCal.get(Calendar.DAY_OF_YEAR) == tomorrowCal.get(Calendar.DAY_OF_YEAR)
+
+        return when {
+            isToday -> "Hôm nay · $hhmm"
+            isTomorrow -> "Ngày mai · $hhmm"
+            else -> {
+                val dd = targetCal.get(Calendar.DAY_OF_MONTH)
+                val mm = targetCal.get(Calendar.MONTH) + 1
+                "$dd/$mm · $hhmm"
+            }
+        }
+    }
 }
