@@ -1,14 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/w_tasks_root"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:orientation="vertical"
-    android:paddingStart="7dp"
-    android:paddingTop="7dp"
-    android:paddingEnd="7dp"
-    android:paddingBottom="7dp">
+    android:layout_height="match_parent">
+
+    <!-- Minimal 3.5dp inset lets 16dp corners stay completely clear of One UI's ~26-28dp mask with almost zero size loss -->
+    <TextView
+        android:layout_width="1dp"
+        android:layout_height="1dp" />
+
+    <LinearLayout
+        android:id="@+id/w_tasks_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_margin="3.5dp"
+        android:background="@drawable/widget_bg"
+        android:orientation="vertical"
+        android:paddingStart="6dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="6dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -93,4 +104,5 @@
             android:textSize="12.5sp" />
     </FrameLayout>
 
-</LinearLayout>
+    </LinearLayout>
+</FrameLayout>
