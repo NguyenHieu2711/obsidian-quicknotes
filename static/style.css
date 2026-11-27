@@ -358,10 +358,6 @@ svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
   align-items: flex-end;
 }
 
-.quick-list.chat-mode > .quick-item:first-child {
-  margin-top: auto;
-}
-
 .quick-item {
   width: 100%;
   background: var(--card);
@@ -678,10 +674,6 @@ svg.ic-send { width: 17px; height: 17px; stroke-width: 2.2; }
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-}
-
-.stream-list.chat-mode > .note-entry:first-child {
-  margin-top: auto;
 }
 
 .note-entry {

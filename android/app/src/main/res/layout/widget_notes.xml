@@ -81,7 +81,6 @@
             android:divider="@android:color/transparent"
             android:dividerHeight="6dp"
             android:scrollbars="none"
-            android:stackFromBottom="true"
             android:transcriptMode="alwaysScroll" />
 
         <TextView

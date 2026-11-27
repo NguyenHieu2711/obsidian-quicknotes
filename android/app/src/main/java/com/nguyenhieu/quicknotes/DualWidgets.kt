@@ -96,8 +96,10 @@ object DualWidgetContract {
                 val partial = RemoteViews(context.packageName, R.layout.widget_notes)
                 val grp = WidgetVaultHelper.getWidgetGroupFilter(context, widgetId, WidgetVaultHelper.GROUP_ALL)
                 val srt = WidgetVaultHelper.getWidgetSortMode(context, widgetId)
+                val noteCount = WidgetVaultHelper.loadNotesForWidget(context, grp, srt, fastMirror = true).size
                 partial.setTextViewText(R.id.w_notes_group_btn, WidgetVaultHelper.resolveNoteGroupHeaderTitle(context, grp))
                 partial.setTextViewText(R.id.w_notes_sort_btn, WidgetVaultHelper.sortBadgeText(srt))
+                partial.setScrollPosition(R.id.w_notes_list, (noteCount - 1).coerceAtLeast(0))
                 mgr.partiallyUpdateAppWidget(widgetId, partial)
                 mgr.notifyAppWidgetViewDataChanged(intArrayOf(widgetId), R.id.w_notes_list)
             } else {
@@ -253,6 +255,10 @@ class NotesWidgetProvider : AppWidgetProvider() {
             }
             views.setRemoteAdapter(R.id.w_notes_list, svcIntent)
             views.setEmptyView(R.id.w_notes_list, R.id.w_notes_empty)
+            val noteCount = WidgetVaultHelper.loadNotesForWidget(context, groupFilter, sortMode, fastMirror = true).size
+            if (noteCount > 1) {
+                views.setScrollPosition(R.id.w_notes_list, noteCount - 1)
+            }
 
             val itemTemplateIntent = Intent(context, WidgetTrampolineActivity::class.java).apply {
                 action = DualWidgetContract.ACTION_ITEM_CLICK
