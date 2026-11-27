@@ -25,7 +25,9 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -204,14 +206,14 @@ class WidgetActionActivity : Activity() {
         window?.apply {
             clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
             setLayout(
-                (resources.displayMetrics.widthPixels * 0.94f).toInt(),
+                (resources.displayMetrics.widthPixels * 0.96f).toInt(),
                 WindowManager.LayoutParams.WRAP_CONTENT
             )
             setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             val lp = attributes
             lp.x = 0
-            lp.y = dp(14)
-            lp.dimAmount = 0.32f
+            lp.y = dp(10)
+            lp.dimAmount = 0.34f
             attributes = lp
             statusBarColor = Color.TRANSPARENT
             navigationBarColor = Color.TRANSPARENT
@@ -237,14 +239,144 @@ class WidgetActionActivity : Activity() {
     private fun makeSheetCard(): LinearLayout {
         val bg = GradientDrawable().apply {
             setColor(Color.parseColor("#191C24"))
-            setStroke(dp(1), Color.parseColor("#2F3647"))
-            cornerRadius = dp(20).toFloat()
+            setStroke(dp(1), Color.parseColor("#2E3546"))
+            cornerRadius = dp(18).toFloat()
         }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = bg
-            setPadding(dp(16), dp(15), dp(16), dp(15))
+            setPadding(dp(14), dp(12), dp(14), dp(11))
         }
+    }
+
+    private fun makeAiryEditBox(initialText: String, hintText: String, minLn: Int = 3, maxLn: Int = 7): EditText {
+        return EditText(this).apply {
+            if (initialText.isNotEmpty()) {
+                setText(initialText)
+                setSelection(initialText.length)
+            }
+            hint = hintText
+            setHintTextColor(Color.parseColor("#647087"))
+            setTextColor(Color.parseColor("#F3F5F8"))
+            textSize = 15.5f
+            setLineSpacing(dp(3).toFloat(), 1f)
+            gravity = Gravity.TOP or Gravity.START
+            minLines = minLn
+            maxLines = maxLn
+            background = null
+            setPadding(dp(4), dp(4), dp(4), dp(8))
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        }
+    }
+
+    private fun makeSheetDivider(): View {
+        return View(this).apply {
+            setBackgroundColor(Color.parseColor("#262D3D"))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1).coerceAtLeast(1)
+            ).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(9)
+            }
+        }
+    }
+
+    private fun makeIconActionBtn(
+        iconRes: Int,
+        bgColorHex: String,
+        strokeColorHex: String,
+        onClick: () -> Unit
+    ): FrameLayout {
+        return FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor(bgColorHex))
+                setStroke(dp(1), Color.parseColor(strokeColorHex))
+                cornerRadius = dp(9).toFloat()
+            }
+            val iv = ImageView(this@WidgetActionActivity).apply {
+                setImageResource(iconRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            addView(
+                iv,
+                FrameLayout.LayoutParams(dp(16), dp(16)).apply {
+                    gravity = Gravity.CENTER
+                }
+            )
+            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun makeCompactRemindTrigger(
+        getRemindAt: () -> String,
+        onChanged: (String) -> Unit
+    ): LinearLayout {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(34)
+        }
+        val icon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_w_clock)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        val labelTv = TextView(this).apply {
+            textSize = 11.5f
+            paint.isFakeBoldText = true
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            visibility = View.GONE
+        }
+        box.addView(icon, LinearLayout.LayoutParams(dp(15), dp(15)))
+        box.addView(
+            labelTv,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(5)
+            }
+        )
+
+        fun syncVisual() {
+            val (lbl, overdue) = TaskReminderHelper.formatShortDisplay(getRemindAt())
+            val active = lbl.isNotEmpty()
+            if (active) {
+                val cleanLbl = lbl.removePrefix("⏰").trim()
+                val fg = if (overdue) "#F87171" else "#38BDF8"
+                val bg = if (overdue) "#2F1A22" else "#15283B"
+                val st = if (overdue) "#6B2B39" else "#2A5476"
+                icon.setColorFilter(Color.parseColor(fg))
+                labelTv.text = cleanLbl
+                labelTv.setTextColor(Color.parseColor(fg))
+                labelTv.visibility = View.VISIBLE
+                box.setPadding(dp(9), dp(6), dp(10), dp(6))
+                box.background = GradientDrawable().apply {
+                    setColor(Color.parseColor(bg))
+                    setStroke(dp(1), Color.parseColor(st))
+                    cornerRadius = dp(9).toFloat()
+                }
+            } else {
+                icon.setColorFilter(Color.parseColor("#9BA7C0"))
+                labelTv.visibility = View.GONE
+                box.setPadding(dp(9), dp(9), dp(9), dp(9))
+                box.background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#222632"))
+                    setStroke(dp(1), Color.parseColor("#31384A"))
+                    cornerRadius = dp(9).toFloat()
+                }
+            }
+        }
+        syncVisual()
+        box.setOnClickListener {
+            openReminderPickerPopup(getRemindAt()) { picked ->
+                onChanged(picked)
+                syncVisual()
+            }
+        }
+        return box
     }
 
     private fun makeOptionRow(
@@ -318,93 +450,69 @@ class WidgetActionActivity : Activity() {
 
         val card = makeSheetCard()
 
-        val topRow = LinearLayout(this).apply {
+        val editBox = makeAiryEditBox(
+            initialText = "",
+            hintText = if (isTask) "Thêm việc..." else "Ghi nhanh...",
+            minLn = 3,
+            maxLn = 6
+        )
+        card.addView(
+            editBox,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
+
+        val chipRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        val chipViews = mutableListOf<Pair<String, TextView>>()
 
-        val tvHeader = TextView(this).apply {
-            text = if (isTask) "Thêm Task nhanh" else "Ghi chú nhanh"
-            textSize = 15.5f
-            setTextColor(Color.parseColor("#F1F5F9"))
-            paint.isFakeBoldText = true
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        fun refreshChipStyles() {
+            for ((k, tv) in chipViews) {
+                val active = k.equals(selectedGroupKey, ignoreCase = true)
+                tv.setTextColor(if (active) Color.parseColor(accentHex) else Color.parseColor("#9BA7C0"))
+                tv.paint.isFakeBoldText = active
+                tv.background = GradientDrawable().apply {
+                    setColor(if (active) Color.parseColor("#1E293B") else Color.parseColor("#222632"))
+                    setStroke(dp(1), if (active) Color.parseColor(accentHex) else Color.parseColor("#31384A"))
+                    cornerRadius = dp(8).toFloat()
+                }
+            }
         }
-        topRow.addView(tvHeader)
 
-        if (isTask) {
-            val remBtn = TextView(this).apply {
-                textSize = 12f
-                setPadding(dp(9), dp(6), dp(9), dp(6))
-            }
-            fun syncRemBtnStyle() {
-                val (lbl, _) = TaskReminderHelper.formatShortDisplay(selectedRemindAt)
-                val active = lbl.isNotEmpty()
-                remBtn.text = if (active) lbl else "⏰ Hẹn"
-                remBtn.setTextColor(if (active) Color.parseColor("#38BDF8") else Color.parseColor("#94A3B8"))
-                remBtn.background = GradientDrawable().apply {
-                    setColor(if (active) Color.parseColor("#16283B") else Color.parseColor("#232834"))
-                    setStroke(dp(1), if (active) Color.parseColor("#38BDF8") else Color.parseColor("#343C4F"))
-                    cornerRadius = dp(9).toFloat()
+        for (opt in rawOptions) {
+            val shortLbl = if (opt.key == WidgetVaultHelper.GROUP_QUICK) "Ghi nhanh" else opt.label
+            val chip = TextView(this).apply {
+                text = shortLbl
+                textSize = 11.5f
+                setPadding(dp(9), dp(5), dp(9), dp(5))
+                setOnClickListener {
+                    selectedGroupKey = opt.key
+                    refreshChipStyles()
                 }
             }
-            syncRemBtnStyle()
-            remBtn.setOnClickListener {
-                openReminderPickerPopup(selectedRemindAt) { picked ->
-                    selectedRemindAt = picked
-                    syncRemBtnStyle()
-                }
-            }
-            topRow.addView(
-                remBtn,
+            chipViews.add(Pair(opt.key, chip))
+            chipRow.addView(
+                chip,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     rightMargin = dp(6)
                 }
             )
         }
+        refreshChipStyles()
 
-        val starBtn = TextView(this).apply {
-            textSize = 12.5f
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+        val hScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chipRow)
         }
-        fun syncStarBtnStyle() {
-            starBtn.text = if (isStarred) "★ Có sao" else "☆ Sao"
-            starBtn.setTextColor(if (isStarred) Color.parseColor("#FBBF24") else Color.parseColor("#94A3B8"))
-            starBtn.background = GradientDrawable().apply {
-                setColor(if (isStarred) Color.parseColor("#2E2716") else Color.parseColor("#232834"))
-                setStroke(dp(1), if (isStarred) Color.parseColor("#FBBF24") else Color.parseColor("#343C4F"))
-                cornerRadius = dp(9).toFloat()
-            }
-        }
-        syncStarBtnStyle()
-        starBtn.setOnClickListener {
-            isStarred = !isStarred
-            syncStarBtnStyle()
-        }
-        topRow.addView(
-            starBtn,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(8)
+        card.addView(
+            hScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(6)
             }
         )
-
-        val inputBg = GradientDrawable().apply {
-            setColor(Color.parseColor("#222632"))
-            setStroke(dp(1), Color.parseColor("#353D52"))
-            cornerRadius = dp(13).toFloat()
-        }
-        val editBox = EditText(this).apply {
-            hint = if (isTask) "Nhập việc..." else "Ghi nhanh..."
-            setHintTextColor(Color.parseColor("#68748D"))
-            setTextColor(Color.parseColor("#F1F5F9"))
-            textSize = 14.5f
-            minLines = 2
-            maxLines = 4
-            background = inputBg
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            imeOptions = EditorInfo.IME_ACTION_DONE
-        }
+        card.addView(makeSheetDivider())
 
         lateinit var saveBtn: TextView
 
@@ -427,6 +535,47 @@ class WidgetActionActivity : Activity() {
             closeWindowNow()
         }
 
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val starIconIv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        val starBtn = FrameLayout(this).apply {
+            addView(starIconIv, FrameLayout.LayoutParams(dp(16), dp(16)).apply { gravity = Gravity.CENTER })
+        }
+        fun syncStarBtnStyle() {
+            starIconIv.setImageResource(if (isStarred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off)
+            starBtn.background = GradientDrawable().apply {
+                setColor(if (isStarred) Color.parseColor("#2E2716") else Color.parseColor("#222632"))
+                setStroke(dp(1), if (isStarred) Color.parseColor("#FBBF24") else Color.parseColor("#31384A"))
+                cornerRadius = dp(9).toFloat()
+            }
+        }
+        syncStarBtnStyle()
+        starBtn.setOnClickListener {
+            isStarred = !isStarred
+            syncStarBtnStyle()
+        }
+        bottomBar.addView(starBtn, LinearLayout.LayoutParams(dp(34), dp(34)))
+
+        if (isTask) {
+            val remTrigger = makeCompactRemindTrigger(
+                getRemindAt = { selectedRemindAt },
+                onChanged = { selectedRemindAt = it }
+            )
+            bottomBar.addView(
+                remTrigger,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    leftMargin = dp(7)
+                }
+            )
+        }
+
+        bottomBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+
         saveBtn = TextView(this).apply {
             text = "Lưu"
             textSize = 13f
@@ -436,65 +585,11 @@ class WidgetActionActivity : Activity() {
                 setColor(Color.parseColor(accentBtnBg))
                 cornerRadius = dp(9).toFloat()
             }
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setPadding(dp(16), dp(7), dp(16), dp(7))
             setOnClickListener { submitNow() }
         }
-        topRow.addView(saveBtn)
-        card.addView(topRow)
-
-        card.addView(
-            editBox,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(11)
-                bottomMargin = dp(10)
-            }
-        )
-
-        val chipRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val chipViews = mutableListOf<Pair<String, TextView>>()
-
-        fun refreshChipStyles() {
-            for ((k, tv) in chipViews) {
-                val active = k.equals(selectedGroupKey, ignoreCase = true)
-                tv.setTextColor(if (active) Color.parseColor(accentHex) else Color.parseColor("#9BA7C0"))
-                tv.paint.isFakeBoldText = active
-                tv.background = GradientDrawable().apply {
-                    setColor(if (active) Color.parseColor("#1E293B") else Color.parseColor("#222632"))
-                    setStroke(dp(1), if (active) Color.parseColor(accentHex) else Color.parseColor("#31384A"))
-                    cornerRadius = dp(9).toFloat()
-                }
-            }
-        }
-
-        for (opt in rawOptions) {
-            val shortLbl = if (opt.key == WidgetVaultHelper.GROUP_QUICK) "Ghi nhanh (Mặc định)" else opt.label
-            val chip = TextView(this).apply {
-                text = shortLbl
-                textSize = 12f
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                setOnClickListener {
-                    selectedGroupKey = opt.key
-                    refreshChipStyles()
-                }
-            }
-            chipViews.add(Pair(opt.key, chip))
-            chipRow.addView(
-                chip,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    rightMargin = dp(6)
-                }
-            )
-        }
-        refreshChipStyles()
-
-        val hScroll = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(chipRow)
-        }
-        card.addView(hScroll)
+        bottomBar.addView(saveBtn)
+        card.addView(bottomBar)
 
         mountBottomCard(card, openKeyboardFor = editBox)
     }
@@ -865,58 +960,17 @@ class WidgetActionActivity : Activity() {
         val isStarred = note.starred
         val card = makeSheetCard()
 
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        topRow.addView(
-            TextView(this).apply {
-                text = if (note.isUnassigned) "Ghi nhanh" else note.groupLabel
-                textSize = 14.5f
-                paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#38BDF8"))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
+        val editBox = makeAiryEditBox(
+            initialText = note.cleanText,
+            hintText = "Nhập nội dung...",
+            minLn = 3,
+            maxLn = 7
         )
-
-        topRow.addView(
-            TextView(this).apply {
-                text = "Mở App ↗"
-                textSize = 12f
-                setTextColor(Color.parseColor("#94A3B8"))
-                setPadding(dp(8), dp(5), dp(8), dp(5))
-                setOnClickListener {
-                    startActivity(Intent(this@WidgetActionActivity, MainActivity::class.java).apply {
-                        putExtra("open_tab", if (note.isUnassigned) "quick" else "notes")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    })
-                    closeWindowNow()
-                }
-            }
-        )
-        card.addView(topRow)
-
-        val editBox = EditText(this).apply {
-            setText(note.cleanText)
-            setSelection(note.cleanText.length)
-            setTextColor(Color.parseColor("#F1F5F9"))
-            textSize = 14.5f
-            minLines = 2
-            maxLines = 5
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#222632"))
-                setStroke(dp(1), Color.parseColor("#353D52"))
-                cornerRadius = dp(12).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
         card.addView(
             editBox,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(10)
-                bottomMargin = dp(10)
-            }
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         )
+        card.addView(makeSheetDivider())
 
         val actRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -924,36 +978,29 @@ class WidgetActionActivity : Activity() {
         }
 
         actRow.addView(
-            TextView(this).apply {
-                text = "Xóa"
-                textSize = 12.5f
-                setTextColor(Color.parseColor("#F87171"))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#2A1C22"))
-                    setStroke(dp(1), Color.parseColor("#5C2B33"))
-                    cornerRadius = dp(9).toFloat()
-                }
-                setPadding(dp(12), dp(7), dp(12), dp(7))
-                setOnClickListener {
-                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
-                    WidgetVaultHelper.deleteNoteFromWidget(applicationContext, uid)
-                    hapticTick()
-                    closeWindowNow()
-                }
+            makeIconActionBtn(R.drawable.ic_w_trash, "#2A1C22", "#5C2B33") {
+                if (!submitLock.compareAndSet(false, true)) return@makeIconActionBtn
+                WidgetVaultHelper.deleteNoteFromWidget(applicationContext, uid)
+                hapticTick()
+                closeWindowNow()
             }
         )
 
+        val groupChipLabel = if (note.isUnassigned) "Đổi nhóm ▾" else "${note.groupLabel} ▾"
         actRow.addView(
             TextView(this).apply {
-                text = "Đổi nhóm"
-                textSize = 12.5f
-                setTextColor(Color.parseColor("#38BDF8"))
+                text = groupChipLabel
+                textSize = 12f
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = dp(170)
+                setTextColor(Color.parseColor("#C4B5FD"))
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#1E293B"))
-                    setStroke(dp(1), Color.parseColor("#2F4666"))
+                    setColor(Color.parseColor("#231F36"))
+                    setStroke(dp(1), Color.parseColor("#4B3F72"))
                     cornerRadius = dp(9).toFloat()
                 }
-                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setPadding(dp(10), dp(7), dp(10), dp(7))
                 setOnClickListener {
                     submitLock.set(false)
                     renderAssignNoteGroupSheet(uid)
@@ -964,19 +1011,19 @@ class WidgetActionActivity : Activity() {
             }
         )
 
-        actRow.addView(TextView(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+        actRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
 
         actRow.addView(
             TextView(this).apply {
-                text = "Lưu sửa"
+                text = "Lưu"
                 textSize = 13f
                 paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#0F172A"))
+                setTextColor(Color.WHITE)
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#38BDF8"))
+                    setColor(Color.parseColor("#8B5CF6"))
                     cornerRadius = dp(9).toFloat()
                 }
-                setPadding(dp(15), dp(7), dp(15), dp(7))
+                setPadding(dp(16), dp(7), dp(16), dp(7))
                 setOnClickListener {
                     val txt = editBox.text?.toString()?.trim().orEmpty()
                     if (txt.isEmpty()) return@setOnClickListener
@@ -1001,147 +1048,72 @@ class WidgetActionActivity : Activity() {
         var selectedRemindAt = task.remindAt
         val card = makeSheetCard()
 
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        topRow.addView(
-            TextView(this).apply {
-                text = task.groupLabel
-                textSize = 14.5f
-                paint.isFakeBoldText = true
-                setTextColor(Color.parseColor("#38BDF8"))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
+        val editBox = makeAiryEditBox(
+            initialText = task.cleanText,
+            hintText = "Nhập công việc...",
+            minLn = 3,
+            maxLn = 7
         )
-        topRow.addView(
-            TextView(this).apply {
-                text = "Mở App ↗"
-                textSize = 12f
-                setTextColor(Color.parseColor("#94A3B8"))
-                setPadding(dp(8), dp(5), dp(8), dp(5))
-                setOnClickListener {
-                    startActivity(Intent(this@WidgetActionActivity, MainActivity::class.java).apply {
-                        putExtra("open_tab", "task")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    })
-                    closeWindowNow()
-                }
-            }
-        )
-        card.addView(topRow)
-
-        val editBox = EditText(this).apply {
-            setText(task.cleanText)
-            setSelection(task.cleanText.length)
-            setTextColor(Color.parseColor("#F1F5F9"))
-            textSize = 14.5f
-            minLines = 2
-            maxLines = 4
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#222632"))
-                setStroke(dp(1), Color.parseColor("#353D52"))
-                cornerRadius = dp(12).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
         card.addView(
             editBox,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(10)
-                bottomMargin = dp(8)
-            }
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         )
-
-        val remChipBtn = TextView(this).apply {
-            textSize = 12f
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-        }
-        fun syncEditRemChip() {
-            val (lbl, overdue) = TaskReminderHelper.formatShortDisplay(selectedRemindAt)
-            val active = lbl.isNotEmpty()
-            remChipBtn.text = if (active) "$lbl · Chỉnh" else "⏰ Đặt hẹn giờ nhắc"
-            remChipBtn.setTextColor(
-                when {
-                    active && overdue -> Color.parseColor("#F87171")
-                    active -> Color.parseColor("#38BDF8")
-                    else -> Color.parseColor("#9BA7C0")
-                }
-            )
-            remChipBtn.background = GradientDrawable().apply {
-                setColor(if (active) Color.parseColor("#16283B") else Color.parseColor("#222632"))
-                setStroke(
-                    dp(1),
-                    when {
-                        active && overdue -> Color.parseColor("#F87171")
-                        active -> Color.parseColor("#38BDF8")
-                        else -> Color.parseColor("#31384A")
-                    }
-                )
-                cornerRadius = dp(9).toFloat()
-            }
-        }
-        syncEditRemChip()
-        remChipBtn.setOnClickListener {
-            openReminderPickerPopup(selectedRemindAt) { picked ->
-                selectedRemindAt = picked
-                syncEditRemChip()
-            }
-        }
-        card.addView(
-            remChipBtn,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(10)
-            }
-        )
+        card.addView(makeSheetDivider())
 
         val actRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+
         actRow.addView(
-            TextView(this).apply {
-                text = "Xóa"
-                textSize = 12.5f
-                setTextColor(Color.parseColor("#F87171"))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#2A1C22"))
-                    setStroke(dp(1), Color.parseColor("#5C2B33"))
-                    cornerRadius = dp(9).toFloat()
-                }
-                setPadding(dp(12), dp(7), dp(12), dp(7))
-                setOnClickListener {
-                    if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
-                    WidgetVaultHelper.deleteTaskFromWidget(applicationContext, uid)
-                    hapticTick()
-                    closeWindowNow()
-                }
+            makeIconActionBtn(R.drawable.ic_w_trash, "#2A1C22", "#5C2B33") {
+                if (!submitLock.compareAndSet(false, true)) return@makeIconActionBtn
+                WidgetVaultHelper.deleteTaskFromWidget(applicationContext, uid)
+                hapticTick()
+                closeWindowNow()
             }
         )
+
         actRow.addView(
             TextView(this).apply {
-                text = "Đổi nhóm"
-                textSize = 12.5f
-                setTextColor(Color.parseColor("#C4B5FD"))
+                text = "${task.groupLabel} ▾"
+                textSize = 12f
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = dp(120)
+                setTextColor(Color.parseColor("#9BA7C0"))
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#231F36"))
-                    setStroke(dp(1), Color.parseColor("#4B3F72"))
+                    setColor(Color.parseColor("#222632"))
+                    setStroke(dp(1), Color.parseColor("#31384A"))
                     cornerRadius = dp(9).toFloat()
                 }
-                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setPadding(dp(10), dp(7), dp(10), dp(7))
                 setOnClickListener {
                     submitLock.set(false)
                     renderAssignTaskGroupSheet(uid)
                 }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(8)
+                leftMargin = dp(7)
             }
         )
-        actRow.addView(TextView(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+
+        val remTrigger = makeCompactRemindTrigger(
+            getRemindAt = { selectedRemindAt },
+            onChanged = { selectedRemindAt = it }
+        )
+        actRow.addView(
+            remTrigger,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(7)
+            }
+        )
+
+        actRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+
         actRow.addView(
             TextView(this).apply {
-                text = "Lưu sửa"
+                text = "Lưu"
                 textSize = 13f
                 paint.isFakeBoldText = true
                 setTextColor(Color.parseColor("#0F172A"))
@@ -1149,7 +1121,7 @@ class WidgetActionActivity : Activity() {
                     setColor(Color.parseColor("#38BDF8"))
                     cornerRadius = dp(9).toFloat()
                 }
-                setPadding(dp(15), dp(7), dp(15), dp(7))
+                setPadding(dp(16), dp(7), dp(16), dp(7))
                 setOnClickListener {
                     val txt = editBox.text?.toString()?.trim().orEmpty()
                     if (txt.isEmpty()) return@setOnClickListener
