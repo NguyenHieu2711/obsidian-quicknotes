@@ -56,10 +56,9 @@
                 android:paddingEnd="7dp"
                 android:paddingBottom="2dp"
                 android:singleLine="true"
-                android:text="Trọng tâm hôm nay"
-                android:textColor="#4ADE80"
-                android:textSize="10.5sp"
-                android:textStyle="bold" />
+                android:text="Hôm nay"
+                android:textColor="#7E8AA3"
+                android:textSize="10.5sp" />
 
             <TextView
                 android:id="@+id/wt_remind_chip"

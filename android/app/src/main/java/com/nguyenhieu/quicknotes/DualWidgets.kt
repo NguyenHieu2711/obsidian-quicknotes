@@ -678,11 +678,7 @@ private class TasksRemoteViewsFactory(
         }
 
         rv.setTextViewText(R.id.wt_group_chip, item.groupLabel)
-        if (item.groupKey == WidgetVaultHelper.GROUP_FOCUS) {
-            rv.setTextColor(R.id.wt_group_chip, Color.parseColor("#4ADE80"))
-        } else {
-            rv.setTextColor(R.id.wt_group_chip, Color.parseColor("#9BA7C0"))
-        }
+        rv.setTextColor(R.id.wt_group_chip, Color.parseColor("#7E8AA3"))
 
         val (remLabel, remOverdue) = TaskReminderHelper.formatShortDisplay(item.remindAt)
         if (remLabel.isNotEmpty()) {
