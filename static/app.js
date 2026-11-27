@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.6.8",
+    appVersion: "1.6.9",
 
     quickItems: [],
     noteStreams: [],
