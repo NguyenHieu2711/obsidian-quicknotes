@@ -1,6 +1,9 @@
 package com.nguyenhieu.quicknotes
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
@@ -27,6 +30,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -131,6 +136,67 @@ class WidgetActionActivity : Activity() {
         finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
+    }
+
+    private fun openReminderPickerPopup(currentRemindAt: String, onPicked: (String) -> Unit) {
+        val hasCurrent = currentRemindAt.isNotBlank()
+        val labels = mutableListOf(
+            "Sau 1 giờ",
+            "Tối nay 21:00",
+            "Sáng mai 09:00",
+            "Chọn ngày & giờ..."
+        )
+        if (hasCurrent) labels.add("Xóa hẹn giờ")
+
+        AlertDialog.Builder(this)
+            .setTitle("Hẹn giờ nhắc")
+            .setItems(labels.toTypedArray()) { _, which ->
+                when (which) {
+                    0 -> onPicked(TaskReminderHelper.buildPresetRemindAt("in_1h"))
+                    1 -> onPicked(TaskReminderHelper.buildPresetRemindAt("tonight_21"))
+                    2 -> onPicked(TaskReminderHelper.buildPresetRemindAt("tomorrow_9"))
+                    3 -> openNativeDateTimePicker(currentRemindAt, onPicked)
+                    4 -> onPicked("")
+                }
+            }
+            .show()
+    }
+
+    private fun openNativeDateTimePicker(currentRemindAt: String, onPicked: (String) -> Unit) {
+        val cal = Calendar.getInstance()
+        val parsedMs = TaskReminderHelper.parseTriggerMillis(currentRemindAt)
+        if (parsedMs != null) {
+            cal.timeInMillis = parsedMs
+        } else {
+            cal.add(Calendar.HOUR_OF_DAY, 1)
+            cal.set(Calendar.MINUTE, (cal.get(Calendar.MINUTE) / 5) * 5)
+        }
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    this,
+                    { _, hour, minute ->
+                        val formatted = String.format(
+                            Locale.US,
+                            "%04d-%02d-%02d %02d:%02d",
+                            year,
+                            month + 1,
+                            day,
+                            hour,
+                            minute
+                        )
+                        onPicked(formatted)
+                    },
+                    cal.get(Calendar.HOUR_OF_DAY),
+                    cal.get(Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
     }
 
     private fun mountBottomCard(card: LinearLayout, openKeyboardFor: EditText? = null) {
@@ -248,6 +314,7 @@ class WidgetActionActivity : Activity() {
             else -> WidgetVaultHelper.GROUP_QUICK
         }
         var isStarred = false
+        var selectedRemindAt = ""
 
         val card = makeSheetCard()
 
@@ -264,6 +331,37 @@ class WidgetActionActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         topRow.addView(tvHeader)
+
+        if (isTask) {
+            val remBtn = TextView(this).apply {
+                textSize = 12f
+                setPadding(dp(9), dp(6), dp(9), dp(6))
+            }
+            fun syncRemBtnStyle() {
+                val (lbl, _) = TaskReminderHelper.formatShortDisplay(selectedRemindAt)
+                val active = lbl.isNotEmpty()
+                remBtn.text = if (active) lbl else "⏰ Hẹn"
+                remBtn.setTextColor(if (active) Color.parseColor("#38BDF8") else Color.parseColor("#94A3B8"))
+                remBtn.background = GradientDrawable().apply {
+                    setColor(if (active) Color.parseColor("#16283B") else Color.parseColor("#232834"))
+                    setStroke(dp(1), if (active) Color.parseColor("#38BDF8") else Color.parseColor("#343C4F"))
+                    cornerRadius = dp(9).toFloat()
+                }
+            }
+            syncRemBtnStyle()
+            remBtn.setOnClickListener {
+                openReminderPickerPopup(selectedRemindAt) { picked ->
+                    selectedRemindAt = picked
+                    syncRemBtnStyle()
+                }
+            }
+            topRow.addView(
+                remBtn,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    rightMargin = dp(6)
+                }
+            )
+        }
 
         val starBtn = TextView(this).apply {
             textSize = 12.5f
@@ -322,7 +420,7 @@ class WidgetActionActivity : Activity() {
             hapticTick()
             // Writes to RAM + Mirror + refreshes widget in <1ms; SAF flushes asynchronously!
             if (isTask) {
-                WidgetVaultHelper.addTaskFromWidget(applicationContext, txt, selectedGroupKey, isStarred)
+                WidgetVaultHelper.addTaskFromWidget(applicationContext, txt, selectedGroupKey, isStarred, selectedRemindAt)
             } else {
                 WidgetVaultHelper.addNoteFromWidget(applicationContext, txt, selectedGroupKey, isStarred)
             }
@@ -900,6 +998,7 @@ class WidgetActionActivity : Activity() {
             return
         }
         val isStarred = task.starred
+        var selectedRemindAt = task.remindAt
         val card = makeSheetCard()
 
         val topRow = LinearLayout(this).apply {
@@ -950,6 +1049,48 @@ class WidgetActionActivity : Activity() {
             editBox,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(10)
+                bottomMargin = dp(8)
+            }
+        )
+
+        val remChipBtn = TextView(this).apply {
+            textSize = 12f
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+        }
+        fun syncEditRemChip() {
+            val (lbl, overdue) = TaskReminderHelper.formatShortDisplay(selectedRemindAt)
+            val active = lbl.isNotEmpty()
+            remChipBtn.text = if (active) "$lbl · Chỉnh" else "⏰ Đặt hẹn giờ nhắc"
+            remChipBtn.setTextColor(
+                when {
+                    active && overdue -> Color.parseColor("#F87171")
+                    active -> Color.parseColor("#38BDF8")
+                    else -> Color.parseColor("#9BA7C0")
+                }
+            )
+            remChipBtn.background = GradientDrawable().apply {
+                setColor(if (active) Color.parseColor("#16283B") else Color.parseColor("#222632"))
+                setStroke(
+                    dp(1),
+                    when {
+                        active && overdue -> Color.parseColor("#F87171")
+                        active -> Color.parseColor("#38BDF8")
+                        else -> Color.parseColor("#31384A")
+                    }
+                )
+                cornerRadius = dp(9).toFloat()
+            }
+        }
+        syncEditRemChip()
+        remChipBtn.setOnClickListener {
+            openReminderPickerPopup(selectedRemindAt) { picked ->
+                selectedRemindAt = picked
+                syncEditRemChip()
+            }
+        }
+        card.addView(
+            remChipBtn,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(10)
             }
         )
@@ -1013,7 +1154,7 @@ class WidgetActionActivity : Activity() {
                     val txt = editBox.text?.toString()?.trim().orEmpty()
                     if (txt.isEmpty()) return@setOnClickListener
                     if (!submitLock.compareAndSet(false, true)) return@setOnClickListener
-                    WidgetVaultHelper.updateTaskFromWidget(applicationContext, uid, txt, isStarred)
+                    WidgetVaultHelper.updateTaskFromWidget(applicationContext, uid, txt, isStarred, selectedRemindAt)
                     hapticTick()
                     closeWindowNow()
                 }

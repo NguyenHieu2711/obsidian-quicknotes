@@ -50,7 +50,7 @@
                 android:layout_height="wrap_content"
                 android:background="@drawable/widget_tag_chip_neutral_bg"
                 android:ellipsize="end"
-                android:maxWidth="185dp"
+                android:maxWidth="145dp"
                 android:paddingStart="7dp"
                 android:paddingTop="2dp"
                 android:paddingEnd="7dp"
@@ -60,6 +60,24 @@
                 android:textColor="#A78BFA"
                 android:textSize="10.5sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/wt_remind_chip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/widget_tag_chip_bg"
+                android:ellipsize="end"
+                android:maxWidth="115dp"
+                android:paddingStart="6dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="2dp"
+                android:singleLine="true"
+                android:textColor="#38BDF8"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 

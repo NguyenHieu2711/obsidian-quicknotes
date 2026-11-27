@@ -690,6 +690,20 @@ private class TasksRemoteViewsFactory(
             rv.setTextColor(R.id.wt_group_chip, Color.parseColor("#9BA7C0"))
         }
 
+        val (remLabel, remOverdue) = TaskReminderHelper.formatShortDisplay(item.remindAt)
+        if (remLabel.isNotEmpty()) {
+            rv.setViewVisibility(R.id.wt_remind_chip, View.VISIBLE)
+            rv.setTextViewText(R.id.wt_remind_chip, remLabel)
+            val remColor = when {
+                item.done -> "#6B7489"
+                remOverdue -> "#F87171"
+                else -> "#38BDF8"
+            }
+            rv.setTextColor(R.id.wt_remind_chip, Color.parseColor(remColor))
+        } else {
+            rv.setViewVisibility(R.id.wt_remind_chip, View.GONE)
+        }
+
         rv.setImageViewResource(
             R.id.wt_star,
             if (item.starred) R.drawable.ic_w_star_on else R.drawable.ic_w_star_off
@@ -704,6 +718,13 @@ private class TasksRemoteViewsFactory(
         )
         rv.setOnClickFillInIntent(
             R.id.wt_text,
+            Intent().apply {
+                putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_TASK)
+                putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
+            }
+        )
+        rv.setOnClickFillInIntent(
+            R.id.wt_remind_chip,
             Intent().apply {
                 putExtra(DualWidgetContract.EXTRA_MODE, DualWidgetContract.MODE_EDIT_TASK)
                 putExtra(DualWidgetContract.EXTRA_ITEM_UID, item.uid)
@@ -738,6 +759,7 @@ class WidgetPackageUpdateReceiver : android.content.BroadcastReceiver() {
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED || intent.action == Intent.ACTION_BOOT_COMPLETED) {
             val appCtx = context.applicationContext
             DualWidgetContract.refreshAllWidgets(appCtx)
+            TaskReminderScheduler.syncAllAlarms(appCtx)
             VaultRepository.syncFromExternalVaultAsync(
                 appCtx,
                 listOf(

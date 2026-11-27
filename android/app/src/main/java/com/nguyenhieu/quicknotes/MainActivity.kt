@@ -3,8 +3,11 @@ package com.nguyenhieu.quicknotes
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.AlertDialog
+import android.app.DatePickerDialog
 import android.app.DownloadManager
+import android.app.TimePickerDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -49,6 +52,8 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Calendar
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -92,6 +97,14 @@ class MainActivity : AppCompatActivity() {
     ) {
         VaultRepository.tryAutoDetectVaultFolder(this)
         pushVaultStatusToWeb()
+    }
+
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            TaskReminderScheduler.syncAllAlarms(this)
+        }
     }
 
     private val audioPermLauncher = registerForActivityResult(
@@ -215,7 +228,16 @@ class MainActivity : AppCompatActivity() {
         })
 
         lifecycleScope.launch {
+            TaskReminderScheduler.ensureChannel(this@MainActivity)
+            TaskReminderScheduler.syncAllAlarms(this@MainActivity)
             checkForUpdatesFromGitHub(manualCheck = false)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -239,6 +261,7 @@ class MainActivity : AppCompatActivity() {
             webView.evaluateJavascript("window.__onAppResumed && window.__onAppResumed();", null)
         }
         lifecycleScope.launch {
+            TaskReminderScheduler.syncAllAlarms(this@MainActivity)
             checkForUpdatesFromGitHub(manualCheck = false)
         }
     }
@@ -690,6 +713,7 @@ class MainActivity : AppCompatActivity() {
                 put("linkPreviewsJson", VaultRepository.readLinkPreviewsJson(this@MainActivity))
             }
             DualWidgetContract.refreshAllWidgets(this@MainActivity)
+            TaskReminderScheduler.syncAllAlarms(this@MainActivity)
             return obj.toString()
         }
 
@@ -771,6 +795,77 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun saveTaskWarehouseMd(md: String): Boolean {
             return VaultRepository.saveTaskWarehouseMd(this@MainActivity, md)
+        }
+
+        @JavascriptInterface
+        fun ensureReminderPermission() {
+            runOnUiThread {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val am = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                    if (am != null && !am.canScheduleExactAlarms()) {
+                        try {
+                            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                        } catch (_: Throwable) {
+                        }
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun pickReminderDateTime(currentRemindAt: String) {
+            runOnUiThread {
+                ensureReminderPermission()
+                val cal = Calendar.getInstance()
+                val parsedMs = TaskReminderHelper.parseTriggerMillis(currentRemindAt)
+                if (parsedMs != null) {
+                    cal.timeInMillis = parsedMs
+                } else {
+                    cal.add(Calendar.HOUR_OF_DAY, 1)
+                    cal.set(Calendar.MINUTE, (cal.get(Calendar.MINUTE) / 5) * 5)
+                }
+                DatePickerDialog(
+                    this@MainActivity,
+                    { _, year, month, day ->
+                        TimePickerDialog(
+                            this@MainActivity,
+                            { _, hour, minute ->
+                                val formatted = String.format(
+                                    Locale.US,
+                                    "%04d-%02d-%02d %02d:%02d",
+                                    year,
+                                    month + 1,
+                                    day,
+                                    hour,
+                                    minute
+                                )
+                                val esc = JSONObject.quote(formatted)
+                                if (::webView.isInitialized && !isDestroyed) {
+                                    webView.evaluateJavascript(
+                                        "window.__onReminderPicked && window.__onReminderPicked($esc);",
+                                        null
+                                    )
+                                }
+                            },
+                            cal.get(Calendar.HOUR_OF_DAY),
+                            cal.get(Calendar.MINUTE),
+                            true
+                        ).show()
+                    },
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
         }
 
         @JavascriptInterface

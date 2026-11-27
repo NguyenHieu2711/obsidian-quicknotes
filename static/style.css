@@ -1671,5 +1671,85 @@ body.theme-light .notion-bookmark-card {
   line-height: 1.4;
 }
 
+/* Task Reminder Badges & Minimalist Picker */
+.tc-body-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.tc-remind-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 7px;
+  padding: 2px 7px;
+  line-height: 1.3;
+}
+
+.tc-remind-pill.overdue {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.13);
+  border-color: rgba(248, 113, 113, 0.34);
+}
+
+.tc-remind-pill.done {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--border);
+  text-decoration: line-through;
+}
+
+.sheet-remind-box {
+  margin-bottom: 12px;
+}
+
+.sheet-remind-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.remind-clear-btn {
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 7px;
+  padding: 3px 9px;
+}
+
+.sheet-remind-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.remind-chip {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 6px 10px;
+}
+
+.remind-chip.accent {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.38);
+  background: rgba(56, 189, 248, 0.1);
+}
+
+
 
 

@@ -45,7 +45,7 @@
     vaultLabel: "",
     hasAllFilesAccess: false,
     lastKnownModified: 0,
-    appVersion: "1.5.8",
+    appVersion: "1.6.0",
 
     quickItems: [],
     noteStreams: [],
@@ -537,22 +537,124 @@
   }
 
   // =========================================================================
-  // PARSER & SERIALIZER: TASK
+  // PARSER & SERIALIZER: TASK & REMINDERS
   // =========================================================================
+  const MD_REMIND_RE = /(?:📅\s*(\d{4}-\d{2}-\d{2})\s*)?⏰\s*(?:(\d{4}-\d{2}-\d{2})\s+)?(\d{1,2}:\d{2})/;
+  let activeReminderPickerCb = null;
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  function formatDateYMD(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+
+  function formatRemindAtDate(d) {
+    return formatDateYMD(d) + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+
+  function normalizeRemindAt(raw) {
+    const s = String(raw || "").trim().replace("T", " ").replace(/\s+/g, " ");
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+    if (!m) return "";
+    return m[1] + "-" + pad2(parseInt(m[2], 10)) + "-" + pad2(parseInt(m[3], 10)) + " " +
+      pad2(parseInt(m[4], 10)) + ":" + m[5];
+  }
+
+  function extractMarkdownReminder(rawText) {
+    const str = String(rawText || "");
+    const m = str.match(MD_REMIND_RE);
+    if (!m) return { cleanText: str.trim(), remindAt: "" };
+    const datePart = m[1] || m[2] || formatDateYMD(new Date());
+    const [hh, mm] = m[3].split(":");
+    const remindAt = normalizeRemindAt(datePart + " " + pad2(parseInt(hh, 10)) + ":" + mm);
+    const cleanText = str.replace(MD_REMIND_RE, "").replace(/\s{2,}/g, " ").trim();
+    return { cleanText: cleanText || str.trim(), remindAt };
+  }
+
+  function applyMarkdownReminder(rawText, remindAt) {
+    const base = extractMarkdownReminder(rawText).cleanText;
+    const norm = normalizeRemindAt(remindAt);
+    if (!norm) return base;
+    const [dPart, tPart] = norm.split(" ");
+    const noDupDate = base.replace(/\s*📅\s*\d{4}-\d{2}-\d{2}/g, "").trim();
+    return (noDupDate + " 📅 " + dPart + " ⏰ " + tPart).trim();
+  }
+
+  function buildReminderPreset(preset) {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    if (preset === "in_1h") {
+      d.setHours(d.getHours() + 1);
+    } else if (preset === "tonight_21") {
+      const now = Date.now();
+      d.setHours(21, 0, 0, 0);
+      if (d.getTime() <= now + 60000) d.setDate(d.getDate() + 1);
+    } else if (preset === "tomorrow_9") {
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+    }
+    return formatRemindAtDate(d);
+  }
+
+  function formatReminderBadge(remindAt) {
+    const norm = normalizeRemindAt(remindAt);
+    if (!norm) return null;
+    const [dPart, tPart] = norm.split(" ");
+    const [y, mo, da] = dPart.split("-").map(Number);
+    const [hh, mm] = tPart.split(":").map(Number);
+    const target = new Date(y, mo - 1, da, hh, mm, 0, 0);
+    const now = new Date();
+    const overdue = target.getTime() < now.getTime() - 30000;
+    const todayStr = formatDateYMD(now);
+    const tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const tmrStr = formatDateYMD(tmr);
+    let label = "⏰ " + da + "/" + mo + " " + tPart;
+    if (dPart === todayStr) label = "⏰ " + tPart;
+    else if (dPart === tmrStr) label = "⏰ Mai " + tPart;
+    return { label, overdue };
+  }
+
+  function requestNativeReminderPicker(currentRemindAt, onPicked) {
+    if (hasNative && typeof window.AndroidBridge.pickReminderDateTime === "function") {
+      activeReminderPickerCb = (picked) => {
+        activeReminderPickerCb = null;
+        if (picked) onPicked(normalizeRemindAt(picked));
+      };
+      window.AndroidBridge.pickReminderDateTime(currentRemindAt || "");
+    } else {
+      const fallback = prompt("Nhập lịch nhắc (YYYY-MM-DD HH:mm):", currentRemindAt || buildReminderPreset("in_1h"));
+      if (fallback !== null) {
+        const norm = normalizeRemindAt(fallback);
+        if (norm) onPicked(norm);
+      }
+    }
+  }
+
+  function ensureReminderPermissionSafe() {
+    if (hasNative && typeof window.AndroidBridge.ensureReminderPermission === "function") {
+      try { window.AndroidBridge.ensureReminderPermission(); } catch (_) {}
+    }
+  }
+
   function parseDailyAnchor(jsonStr) {
     try {
       const obj = JSON.parse(jsonStr || "{}");
       state.focusAnchorRaw = obj;
       const arr = Array.isArray(obj.customTasks) ? obj.customTasks : [];
-      state.focusTasks = arr.map((t) => ({
-        ...t,
-        id: t.id || makeId("cf"),
-        text: t.text || "",
-        status: t.status === "done" ? "done" : "doing",
-        subTasks: Array.isArray(t.subTasks)
-          ? t.subTasks.map((st) => ({ id: st.id || makeId("st"), text: st.text || "", done: !!st.done }))
-          : []
-      }));
+      state.focusTasks = arr.map((t) => {
+        const ext = extractMarkdownReminder(t.text || "");
+        const remindAt = normalizeRemindAt(t.remindAt || "") || ext.remindAt;
+        return {
+          ...t,
+          id: t.id || makeId("cf"),
+          text: ext.cleanText || t.text || "",
+          remindAt: remindAt || "",
+          status: t.status === "done" ? "done" : "doing",
+          subTasks: Array.isArray(t.subTasks)
+            ? t.subTasks.map((st) => ({ id: st.id || makeId("st"), text: st.text || "", done: !!st.done }))
+            : []
+        };
+      });
     } catch (_) {
       state.focusAnchorRaw = { customTasks: [] };
       state.focusTasks = [];
@@ -560,7 +662,14 @@
   }
 
   function persistDailyAnchor() {
-    const payload = { ...state.focusAnchorRaw, customTasks: state.focusTasks };
+    const cleanedTasks = state.focusTasks.map((t) => {
+      const copy = { ...t };
+      const norm = normalizeRemindAt(copy.remindAt);
+      if (norm) copy.remindAt = norm;
+      else delete copy.remindAt;
+      return copy;
+    });
+    const payload = { ...state.focusAnchorRaw, customTasks: cleanedTasks };
     const jsonStr = JSON.stringify(payload, null, 2);
     if (hasNative) {
       window.AndroidBridge.saveDailyAnchorJson(jsonStr);
@@ -583,7 +692,16 @@
       }
       const m = tr.match(/^-\s*\[([ xX])\]\s+(.+)$/);
       if (m) {
-        tasks.push({ lineIndex: i, group: currentGroup, done: m[1].toLowerCase() === "x", text: m[2].trim() });
+        const rawBody = m[2].trim();
+        const ext = extractMarkdownReminder(rawBody);
+        tasks.push({
+          lineIndex: i,
+          group: currentGroup,
+          done: m[1].toLowerCase() === "x",
+          text: rawBody,
+          cleanText: ext.cleanText,
+          remindAt: ext.remindAt
+        });
       }
     }
     state.warehouseTasks = tasks;
@@ -833,11 +951,19 @@
             "</div>"
           : "";
 
+        const remBadge = formatReminderBadge(t.remindAt);
+        const remHtml = remBadge
+          ? '<span class="tc-remind-pill' + (isDone ? " done" : (remBadge.overdue ? " overdue" : "")) + '">' + escHtml(remBadge.label) + "</span>"
+          : "";
+
         return (
           '<div class="task-card" data-task-id="' + escHtml(t.id) + '">' +
             '<div class="tc-top-row">' +
               '<button class="' + leftBtnClass + '" data-task-circle="' + escHtml(t.id) + '" type="button">' + leftInner + "</button>" +
-              '<span class="tc-label ' + (isDone ? "done" : "") + '" data-task-menu="' + escHtml(t.id) + '">' + escHtml(t.text) + "</span>" +
+              '<div class="tc-body-col" data-task-menu="' + escHtml(t.id) + '">' +
+                '<span class="tc-label ' + (isDone ? "done" : "") + '">' + escHtml(t.text) + "</span>" +
+                remHtml +
+              "</div>" +
               (hasSubs
                 ? '<button class="tc-chevron" data-collapse-task="' + escHtml(t.id) + '" type="button">' + (isCollapsed ? ICONS.chevDown : ICONS.chevUp) + "</button>"
                 : '<button class="tc-chevron" data-add-subtask="' + escHtml(t.id) + '" type="button">' + ICONS.plusSm + "</button>") +
@@ -867,11 +993,18 @@
             lastGrp = w.group;
             html.push('<div class="wh-group-title">' + escHtml(w.group) + "</div>");
           }
+          const wRem = formatReminderBadge(w.remindAt);
+          const wRemHtml = wRem
+            ? '<span class="tc-remind-pill' + (wRem.overdue ? " overdue" : "") + '">' + escHtml(wRem.label) + "</span>"
+            : "";
           html.push(
             '<div class="task-card" style="padding:11px 12px;margin-bottom:8px;">' +
               '<div class="tc-top-row">' +
                 '<button class="task-node-btn" data-check-wh="' + w.lineIndex + '" type="button"></button>' +
-                '<span class="tc-label" style="font-size:14.5px;">' + escHtml(w.text) + "</span>" +
+                '<div class="tc-body-col" data-wh-menu="' + w.lineIndex + '">' +
+                  '<span class="tc-label" style="font-size:14.5px;">' + escHtml(w.cleanText || w.text) + "</span>" +
+                  wRemHtml +
+                "</div>" +
                 '<button class="promote-btn" data-promote-wh="' + w.lineIndex + '" type="button">' + ICONS.arrowUpRight + "<span>Hôm nay</span></button>" +
               "</div>" +
             "</div>"
@@ -1259,9 +1392,50 @@
     });
   }
 
+  function buildSheetRemindHtml(currentRemindAt) {
+    const badge = formatReminderBadge(currentRemindAt);
+    const activeHtml = badge
+      ? '<div class="sheet-remind-active"><span class="tc-remind-pill' + (badge.overdue ? " overdue" : "") + '">' + escHtml(badge.label) + '</span><button id="btnClearTaskRemind" class="remind-clear-btn" type="button">✕ Xóa</button></div>'
+      : "";
+    return (
+      '<div class="sheet-remind-box">' +
+        activeHtml +
+        '<div class="sheet-remind-presets">' +
+          '<button class="remind-chip" data-rem-preset="in_1h" type="button">+1 giờ</button>' +
+          '<button class="remind-chip" data-rem-preset="tonight_21" type="button">Tối 21:00</button>' +
+          '<button class="remind-chip" data-rem-preset="tomorrow_9" type="button">Mai 09:00</button>' +
+          '<button class="remind-chip accent" data-rem-custom="1" type="button">⏰ Chọn giờ</button>' +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function bindSheetRemindActions(currentRemindAt, onApplyRemind) {
+    els.sheetContent.querySelectorAll("[data-rem-preset]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        ensureReminderPermissionSafe();
+        const nextVal = buildReminderPreset(btn.getAttribute("data-rem-preset"));
+        onApplyRemind(nextVal);
+      });
+    });
+    const customBtn = els.sheetContent.querySelector("[data-rem-custom]");
+    if (customBtn) {
+      customBtn.addEventListener("click", () => {
+        requestNativeReminderPicker(currentRemindAt, (picked) => {
+          if (picked) onApplyRemind(picked);
+        });
+      });
+    }
+    const clearBtn = document.getElementById("btnClearTaskRemind");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => onApplyRemind(""));
+    }
+  }
+
   function openTaskActionSheet(task) {
     let html = '<div class="sheet-title">Tùy chỉnh công việc</div>';
     html += '<input id="editTaskTitleInp" class="modal-input" type="text" value="' + escHtml(task.text) + '" />';
+    html += buildSheetRemindHtml(task.remindAt || "");
     html += '<button id="btnSaveTaskTitle" class="primary-btn" style="margin-bottom:10px;" type="button">Lưu tên việc</button>';
     html += '<button id="btnSheetAddSub" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.plusSm + '<span>Thêm việc con vào nhánh cây</span></span>' + ICONS.arrowRight + "</button>";
     html += '<button id="btnSheetToggleDone" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.task + "<span>" +
@@ -1271,6 +1445,16 @@
     html += '<button id="btnSheetDeleteTask" class="sheet-row danger" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa công việc</span></span></button>';
 
     openSheet(html);
+
+    bindSheetRemindActions(task.remindAt || "", (nextVal) => {
+      vibrate(10);
+      task.remindAt = nextVal;
+      persistDailyAnchor();
+      renderAll();
+      closeSheet();
+      const b = formatReminderBadge(nextVal);
+      showToast(b ? "Đã hẹn nhắc " + b.label : "Đã xóa hẹn giờ");
+    });
 
     document.getElementById("btnSaveTaskTitle").addEventListener("click", () => {
       const v = document.getElementById("editTaskTitleInp").value.trim();
@@ -1285,13 +1469,77 @@
     document.getElementById("btnSheetMoveToWh").addEventListener("click", () => {
       state.focusTasks = state.focusTasks.filter((x) => x.id !== task.id);
       persistDailyAnchor();
-      insertIntoWarehouse(task.text);
+      insertIntoWarehouse(applyMarkdownReminder(task.text, task.remindAt));
       closeSheet(); renderAll();
       showToast("Đã chuyển xuống Kho chờ");
     });
     document.getElementById("btnSheetDeleteTask").addEventListener("click", () => {
       state.focusTasks = state.focusTasks.filter((x) => x.id !== task.id);
       persistDailyAnchor(); closeSheet(); renderAll();
+    });
+  }
+
+  function openWarehouseTaskSheet(wTask) {
+    let html = '<div class="sheet-title">' + escHtml(wTask.group || "Kho chờ Task") + "</div>";
+    html += '<input id="editWhTitleInp" class="modal-input" type="text" value="' + escHtml(wTask.cleanText || wTask.text) + '" />';
+    html += buildSheetRemindHtml(wTask.remindAt || "");
+    html += '<button id="btnSaveWhTitle" class="primary-btn" style="margin-bottom:10px;" type="button">Lưu thay đổi</button>';
+    html += '<button id="btnWhPromoteSheet" class="sheet-row" type="button"><span class="sheet-row-left">' + ICONS.arrowUpRight + '<span>Đưa lên Trọng tâm hôm nay</span></span>' + ICONS.arrowRight + "</button>";
+    html += '<button id="btnWhDeleteSheet" class="sheet-row danger" type="button"><span class="sheet-row-left">' + ICONS.trash + '<span>Xóa công việc</span></span></button>';
+
+    openSheet(html);
+
+    function commitWarehouseLine(newTitle, newRemind) {
+      const idx = wTask.lineIndex;
+      if (idx < 0 || idx >= state.warehouseRawLines.length) return;
+      const box = wTask.done ? "x" : " ";
+      const hasStar = /^★\s*/.test(wTask.text || "");
+      const bodyClean = String(newTitle || "").replace(/^★\s*/, "").trim();
+      const withRem = applyMarkdownReminder(bodyClean, newRemind);
+      state.warehouseRawLines[idx] = "- [" + box + "] " + (hasStar ? "★ " : "") + withRem;
+      parseWarehouseMd(state.warehouseRawLines.join("\n"));
+      persistWarehouseMd();
+      renderAll();
+    }
+
+    bindSheetRemindActions(wTask.remindAt || "", (nextVal) => {
+      vibrate(10);
+      const curInp = document.getElementById("editWhTitleInp");
+      const titleNow = curInp ? curInp.value.trim() : (wTask.cleanText || wTask.text);
+      commitWarehouseLine(titleNow || wTask.cleanText || wTask.text, nextVal);
+      closeSheet();
+      const b = formatReminderBadge(nextVal);
+      showToast(b ? "Đã hẹn nhắc " + b.label : "Đã xóa hẹn giờ");
+    });
+
+    document.getElementById("btnSaveWhTitle").addEventListener("click", () => {
+      const v = document.getElementById("editWhTitleInp").value.trim();
+      if (v) commitWarehouseLine(v, wTask.remindAt || "");
+      closeSheet();
+    });
+    document.getElementById("btnWhPromoteSheet").addEventListener("click", () => {
+      const idx = wTask.lineIndex;
+      if (idx >= 0 && idx < state.warehouseRawLines.length) {
+        state.warehouseRawLines.splice(idx, 1);
+        parseWarehouseMd(state.warehouseRawLines.join("\n"));
+        persistWarehouseMd();
+      }
+      state.focusTasks.unshift({
+        id: makeId("cf"), text: wTask.cleanText || wTask.text, why: "", status: "doing",
+        isCore: false, notePath: null, subLabel: "", subTasks: [], remindAt: wTask.remindAt || ""
+      });
+      persistDailyAnchor(); closeSheet(); renderAll();
+      showToast("Đã đưa lên Trọng tâm hôm nay");
+    });
+    document.getElementById("btnWhDeleteSheet").addEventListener("click", () => {
+      const idx = wTask.lineIndex;
+      if (idx >= 0 && idx < state.warehouseRawLines.length) {
+        state.warehouseRawLines.splice(idx, 1);
+        parseWarehouseMd(state.warehouseRawLines.join("\n"));
+        persistWarehouseMd();
+        renderAll();
+      }
+      closeSheet();
     });
   }
 
@@ -1891,6 +2139,13 @@
       }
       return;
     }
+    const whMenu = e.target.closest("[data-wh-menu]");
+    if (whMenu) {
+      const lnIdx = parseInt(whMenu.getAttribute("data-wh-menu"), 10);
+      const wTask = state.warehouseTasks.find((w) => w.lineIndex === lnIdx);
+      if (wTask) openWarehouseTaskSheet(wTask);
+      return;
+    }
     const promWh = e.target.closest("[data-promote-wh]");
     if (promWh) {
       const lnIdx = parseInt(promWh.getAttribute("data-promote-wh"), 10);
@@ -1901,14 +2156,20 @@
         parseWarehouseMd(state.warehouseRawLines.join("\n"));
         persistWarehouseMd();
         state.focusTasks.unshift({
-          id: makeId("cf"), text: wTask.text, why: "", status: "doing",
-          isCore: false, notePath: null, subLabel: "", subTasks: []
+          id: makeId("cf"), text: wTask.cleanText || wTask.text, why: "", status: "doing",
+          isCore: false, notePath: null, subLabel: "", subTasks: [], remindAt: wTask.remindAt || ""
         });
         persistDailyAnchor(); renderAll();
         showToast("Đã đưa lên Trọng tâm hôm nay");
       }
     }
   });
+
+  window.__onReminderPicked = (pickedStr) => {
+    if (typeof activeReminderPickerCb === "function") {
+      activeReminderPickerCb(pickedStr || "");
+    }
+  };
 
   window.__onLinkPreviewLoaded = (url, dataJsonStr) => {
     if (!url) return;

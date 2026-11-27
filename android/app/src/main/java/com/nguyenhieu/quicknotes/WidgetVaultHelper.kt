@@ -33,7 +33,8 @@ data class TaskWidgetItem(
     val cleanText: String,
     val done: Boolean,
     val starred: Boolean,
-    val recencyRank: Int
+    val recencyRank: Int,
+    val remindAt: String = ""
 )
 
 object WidgetVaultHelper {
@@ -558,6 +559,8 @@ object WidgetVaultHelper {
                     val rawTxt = obj.optString("text", "").trim()
                     if (rawTxt.isEmpty()) continue
                     val (hasStarPrefix, stripped) = stripStar(rawTxt)
+                    val (cleanTitle, inlineRem) = TaskReminderHelper.extractFromMarkdownBody(stripped)
+                    val remindAt = TaskReminderHelper.normalizeRemindAt(obj.optString("remindAt", "")).ifEmpty { inlineRem }
                     val starred = obj.optBoolean("isCore", false) || hasStarPrefix
                     val done = obj.optString("status") == "done"
                     all.add(
@@ -565,10 +568,11 @@ object WidgetVaultHelper {
                             uid = "TF|$id",
                             groupKey = GROUP_FOCUS,
                             groupLabel = "Trọng tâm hôm nay",
-                            cleanText = stripped,
+                            cleanText = cleanTitle.ifEmpty { stripped },
                             done = done,
                             starred = starred,
-                            recencyRank = rank - (len - 1 - i)
+                            recencyRank = rank - (len - 1 - i),
+                            remindAt = remindAt
                         )
                     )
                 }
@@ -593,16 +597,18 @@ object WidgetVaultHelper {
             val m = taskLineRegex.find(rawLine.trim()) ?: continue
             val done = m.groupValues[1].equals("x", ignoreCase = true)
             val rawTaskBody = m.groupValues[2].trim()
-            val (starred, clean) = stripStar(rawTaskBody)
+            val (starred, starStripped) = stripStar(rawTaskBody)
+            val (clean, remindAt) = TaskReminderHelper.extractFromMarkdownBody(starStripped)
             all.add(
                 TaskWidgetItem(
                     uid = "TW|$lineIdx|${rawTaskBody.hashCode()}",
                     groupKey = curKey,
                     groupLabel = curLabel,
-                    cleanText = clean,
+                    cleanText = clean.ifEmpty { starStripped },
                     done = done,
                     starred = starred,
-                    recencyRank = 10000 - lineIdx
+                    recencyRank = 10000 - lineIdx,
+                    remindAt = remindAt
                 )
             )
         }
@@ -630,9 +636,16 @@ object WidgetVaultHelper {
         }
     }
 
-    fun addTaskFromWidget(context: Context, text: String, targetGroupKey: String, starred: Boolean): Boolean {
+    fun addTaskFromWidget(
+        context: Context,
+        text: String,
+        targetGroupKey: String,
+        starred: Boolean,
+        remindAt: String = ""
+    ): Boolean {
         val clean = text.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
+        val normRemind = TaskReminderHelper.normalizeRemindAt(remindAt)
 
         val effectiveKey = if (targetGroupKey.isBlank() || targetGroupKey == GROUP_ALL) GROUP_FOCUS else targetGroupKey
         if (effectiveKey == GROUP_FOCUS) {
@@ -648,12 +661,13 @@ object WidgetVaultHelper {
                 put("notePath", JSONObject.NULL)
                 put("subLabel", "")
                 put("subTasks", JSONArray())
+                if (normRemind.isNotEmpty()) put("remindAt", normRemind)
             }
             arr.put(newTask)
             root.put("customTasks", arr)
             return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
         } else {
-            return insertWarehouseTask(context, effectiveKey, clean, done = false, starred = starred)
+            return insertWarehouseTask(context, effectiveKey, clean, done = false, starred = starred, remindAt = normRemind)
         }
     }
 
@@ -662,14 +676,16 @@ object WidgetVaultHelper {
         sectionKey: String,
         cleanText: String,
         done: Boolean,
-        starred: Boolean
+        starred: Boolean,
+        remindAt: String = ""
     ): Boolean {
         val md = VaultRepository.readTaskWarehouseMdFast(context)
         val lines = md.replace("\r\n", "\n").split("\n").toMutableList()
         val sections = scanWarehouseSections(lines)
         val targetSec = sections.find { it.key.equals(sectionKey, ignoreCase = true) } ?: sections.firstOrNull()
         val box = if (done) "x" else " "
-        val formattedLine = "- [$box] ${applyStar(cleanText, starred)}"
+        val withRemind = TaskReminderHelper.applyToMarkdownBody(cleanText, remindAt)
+        val formattedLine = "- [$box] ${applyStar(withRemind, starred)}"
 
         if (targetSec != null) {
             var insertAt = targetSec.headingLineIndex + 1
@@ -761,6 +777,59 @@ object WidgetVaultHelper {
         return false
     }
 
+    fun setTaskDone(context: Context, uid: String, done: Boolean): Boolean {
+        if (uid.startsWith("TF|")) {
+            val taskId = uid.removePrefix("TF|")
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
+            val arr = root.optJSONArray("customTasks") ?: return false
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.optString("id") == taskId) {
+                    obj.put("status", if (done) "done" else "doing")
+                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
+                }
+            }
+            return false
+        } else if (uid.startsWith("TW|")) {
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val idx = locateWarehouseLine(lines, uid)
+            if (idx < 0) return false
+            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
+            val body = m.groupValues[2].trim()
+            lines[idx] = "- [${if (done) "x" else " "}] $body"
+            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
+        }
+        return false
+    }
+
+    fun setTaskRemindAt(context: Context, uid: String, remindAt: String): Boolean {
+        val norm = TaskReminderHelper.normalizeRemindAt(remindAt)
+        if (uid.startsWith("TF|")) {
+            val taskId = uid.removePrefix("TF|")
+            val root = try { JSONObject(VaultRepository.readDailyAnchorJsonFast(context)) } catch (_: Exception) { return false }
+            val arr = root.optJSONArray("customTasks") ?: return false
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.optString("id") == taskId) {
+                    if (norm.isEmpty()) obj.remove("remindAt") else obj.put("remindAt", norm)
+                    return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
+                }
+            }
+            return false
+        } else if (uid.startsWith("TW|")) {
+            val lines = VaultRepository.readTaskWarehouseMdFast(context).replace("\r\n", "\n").split("\n").toMutableList()
+            val idx = locateWarehouseLine(lines, uid)
+            if (idx < 0) return false
+            val m = taskLineRegex.find(lines[idx].trim()) ?: return false
+            val box = if (m.groupValues[1].equals("x", ignoreCase = true)) "x" else " "
+            val (starred, starStripped) = stripStar(m.groupValues[2].trim())
+            val updatedBody = TaskReminderHelper.applyToMarkdownBody(starStripped, norm)
+            lines[idx] = "- [$box] ${applyStar(updatedBody, starred)}"
+            return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
+        }
+        return false
+    }
+
     fun assignTaskToGroup(context: Context, uid: String, targetGroupKey: String): Boolean {
         val current = findTaskByUid(context, uid, fastMirror = true) ?: return false
         if (current.groupKey.equals(targetGroupKey, ignoreCase = true)) return true
@@ -779,16 +848,23 @@ object WidgetVaultHelper {
                 put("notePath", JSONObject.NULL)
                 put("subLabel", "")
                 put("subTasks", JSONArray())
+                if (current.remindAt.isNotEmpty()) put("remindAt", current.remindAt)
             }
             arr.put(newTask)
             root.put("customTasks", arr)
             VaultRepository.saveDailyAnchorJson(context, root.toString(2))
         } else {
-            insertWarehouseTask(context, targetGroupKey, current.cleanText, current.done, current.starred)
+            insertWarehouseTask(context, targetGroupKey, current.cleanText, current.done, current.starred, current.remindAt)
         }
     }
 
-    fun updateTaskFromWidget(context: Context, uid: String, newCleanText: String, starred: Boolean): Boolean {
+    fun updateTaskFromWidget(
+        context: Context,
+        uid: String,
+        newCleanText: String,
+        starred: Boolean,
+        remindAt: String? = null
+    ): Boolean {
         val clean = newCleanText.trim().replace("\r\n", " ").replace("\n", " ")
         if (clean.isEmpty()) return false
         if (uid.startsWith("TF|")) {
@@ -800,6 +876,10 @@ object WidgetVaultHelper {
                 if (obj.optString("id") == taskId) {
                     obj.put("text", clean)
                     obj.put("isCore", starred)
+                    if (remindAt != null) {
+                        val norm = TaskReminderHelper.normalizeRemindAt(remindAt)
+                        if (norm.isEmpty()) obj.remove("remindAt") else obj.put("remindAt", norm)
+                    }
                     return VaultRepository.saveDailyAnchorJson(context, root.toString(2))
                 }
             }
@@ -810,7 +890,11 @@ object WidgetVaultHelper {
             if (idx < 0) return false
             val m = taskLineRegex.find(lines[idx].trim()) ?: return false
             val box = if (m.groupValues[1].equals("x", ignoreCase = true)) "x" else " "
-            lines[idx] = "- [$box] ${applyStar(clean, starred)}"
+            val (_, prevBody) = stripStar(m.groupValues[2].trim())
+            val (_, existingRem) = TaskReminderHelper.extractFromMarkdownBody(prevBody)
+            val finalRem = if (remindAt != null) TaskReminderHelper.normalizeRemindAt(remindAt) else existingRem
+            val bodyWithRem = TaskReminderHelper.applyToMarkdownBody(clean, finalRem)
+            lines[idx] = "- [$box] ${applyStar(bodyWithRem, starred)}"
             return VaultRepository.saveTaskWarehouseMd(context, lines.joinToString("\n").trimEnd() + "\n")
         }
         return false

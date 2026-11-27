@@ -419,7 +419,10 @@ object VaultRepository {
                 }
             }
             if (notesChanged) DualWidgetContract.refreshWidgets(appCtx, DualWidgetContract.KIND_NOTES)
-            if (tasksChanged) DualWidgetContract.refreshWidgets(appCtx, DualWidgetContract.KIND_TASKS)
+            if (tasksChanged) {
+                DualWidgetContract.refreshWidgets(appCtx, DualWidgetContract.KIND_TASKS)
+                TaskReminderScheduler.syncAllAlarms(appCtx)
+            }
         }
     }
 
@@ -781,7 +784,7 @@ object VaultRepository {
     fun readDailyAnchorJsonFast(context: Context): String = readRelFileFastMirror(context, REL_DAILY_ANCHOR, DEFAULT_DAILY_ANCHOR_JSON)
     fun saveDailyAnchorJson(context: Context, jsonStr: String): Boolean {
         // Non-breaking merge on fast mirror/RAM so saving takes <1ms
-        return try {
+        val ok = try {
             val currentRaw = readDailyAnchorJsonFast(context)
             val baseObj = try { JSONObject(currentRaw) } catch (_: Exception) { JSONObject() }
             val incoming = JSONObject(jsonStr)
@@ -798,11 +801,17 @@ object VaultRepository {
         } catch (_: Exception) {
             writeRelFile(context, REL_DAILY_ANCHOR, jsonStr)
         }
+        if (ok) TaskReminderScheduler.syncAllAlarms(context)
+        return ok
     }
 
     fun readTaskWarehouseMd(context: Context): String = readRelFile(context, REL_TASK_WAREHOUSE, DEFAULT_TASK_WAREHOUSE_MD)
     fun readTaskWarehouseMdFast(context: Context): String = readRelFileFastMirror(context, REL_TASK_WAREHOUSE, DEFAULT_TASK_WAREHOUSE_MD)
-    fun saveTaskWarehouseMd(context: Context, md: String): Boolean = writeRelFile(context, REL_TASK_WAREHOUSE, md)
+    fun saveTaskWarehouseMd(context: Context, md: String): Boolean {
+        val ok = writeRelFile(context, REL_TASK_WAREHOUSE, md)
+        if (ok) TaskReminderScheduler.syncAllAlarms(context)
+        return ok
+    }
 
     fun readVaultTagsJson(context: Context): String {
         val raw = readRelFile(context, REL_TAGS_INDEX, "[]")
